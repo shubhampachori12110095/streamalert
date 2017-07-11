@@ -287,11 +287,15 @@ class RuleProcessorTester(object):
 
         expected_alert_count = test_record.get('trigger_count')
         if not expected_alert_count:
-            expected_alert_count = (0, 1)[test_record['trigger']]
+            expected_alert_count = 1 if test_record['trigger'] else 0
 
         # Run the rule processor. Passing 'None' for context
-        # will load a mocked object later
-        alerts = StreamAlert(None, True).run(event)
+        # will load a mocked object later. False suppresses sending of alerts
+        processor = StreamAlert(None, False)
+
+        processor.run(event)
+
+        alerts = processor.get_alerts()
 
         # we only want alerts for the specific rule being tested
         alerts = [alert for alert in alerts

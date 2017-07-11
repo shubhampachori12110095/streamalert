@@ -16,16 +16,16 @@ LOGGER.setLevel(LEVEL.upper())
 
 class StreamAlert(object):
     """Wrapper class for handling all StreamAlert classificaiton and processing"""
-    def __init__(self, context, return_alerts=False):
+    def __init__(self, context, send_alerts=True):
         """
         Args:
             context: An AWS context object which provides metadata on the currently
                 executing lambda function.
-            return_alerts: If the user wants to handle the sinking
-                of alerts to external endpoints, return a list of
-                generated alerts.
+            send_alerts [bool]: Boolean indicating if these alerts should be sent to
+                the alert processor. The default for this is True and can be overridden
+                for testing.
         """
-        self.return_alerts = return_alerts
+        self.send_alerts = send_alerts
         self.env = load_env(context)
         # Instantiate the sink here to handle sending the triggered alerts to the alert processor
         self.sinker = StreamSink(self.env)
@@ -71,8 +71,13 @@ class StreamAlert(object):
         LOGGER.debug('%s alerts triggered', len(self.alerts))
         LOGGER.debug('\n%s\n', json.dumps(self.alerts, indent=4))
 
-        if self.return_alerts:
-            return self.alerts
+    def get_alerts(self):
+        """Public method to return alerts from class. Useful for testing.
+
+        Returns:
+            [list] list of alerts in json format
+        """
+        return self.alerts
 
     def _kinesis_process(self, payload, classifier):
         """Process Kinesis data for alerts"""
@@ -120,9 +125,9 @@ class StreamAlert(object):
             LOGGER.debug('Valid data, no alerts')
             return
 
-        # If we want alerts returned to the caller, extend the list. Otherwise
-        # attempt to send them to the alert processor
-        if self.return_alerts:
-            self.alerts.extend(alerts)
-        else:
+        # Extend the list of alerts with any new alerts
+        self.alerts.extend(alerts)
+
+        # Attempt to send them to the alert processor
+        if self.send_alerts:
             self.sinker.sink(alerts)

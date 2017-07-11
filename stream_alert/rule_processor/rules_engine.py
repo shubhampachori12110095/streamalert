@@ -62,8 +62,12 @@ class StreamRules(object):
             matchers = opts.get('matchers')
             req_subkeys = opts.get('req_subkeys')
 
-            if not all([logs, outputs]):
-                LOGGER.error('Invalid rule [%s]', rule_name)
+            if not logs:
+                LOGGER.error('Invalid rule [%s] - rule must have \'logs\' declared', rule_name)
+                return
+
+            if not outputs:
+                LOGGER.error('Invalid rule [%s] - rule must have \'outputs\' declared', rule_name)
                 return
 
             if rule_name in cls.__rules:

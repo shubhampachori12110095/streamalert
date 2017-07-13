@@ -13,10 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 '''
-
 import csv
 import json
-import logging
 import re
 import StringIO
 import zlib
@@ -27,8 +25,8 @@ from fnmatch import fnmatch
 
 import jsonpath_rw
 
-logging.basicConfig()
-LOGGER = logging.getLogger('StreamAlert')
+from stream_alert.rule_processor import LOGGER
+
 
 def get_parser(parserid):
     """Helper method to fetch parser classes

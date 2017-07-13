@@ -1,17 +1,11 @@
 import json
-import logging
-import os
 
+from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.config import load_config, load_env
 from stream_alert.rule_processor.classifier import StreamPayload, StreamClassifier
 from stream_alert.rule_processor.pre_parsers import StreamPreParsers
 from stream_alert.rule_processor.rules_engine import StreamRules
 from stream_alert.rule_processor.sink import StreamSink
-
-logging.basicConfig()
-LEVEL = os.environ.get('LOGGER_LEVEL', 'INFO')
-LOGGER = logging.getLogger('StreamAlert')
-LOGGER.setLevel(LEVEL.upper())
 
 
 class StreamAlert(object):

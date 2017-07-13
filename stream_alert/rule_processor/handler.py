@@ -1,7 +1,7 @@
 import json
 
 from stream_alert.rule_processor import LOGGER
-from stream_alert.rule_processor.config import load_config, load_env
+from stream_alert.rule_processor.config import ConfigError, load_config, load_env
 from stream_alert.rule_processor.classifier import StreamPayload, StreamClassifier
 from stream_alert.rule_processor.pre_parsers import StreamPreParsers
 from stream_alert.rule_processor.rules_engine import StreamRules
@@ -38,11 +38,15 @@ class StreamAlert(object):
                 an s3 bucket event) containing data emitted to the stream.
 
         Returns:
-            None
+            [integer] exit status code. 0 on success, non-zero on error
         """
         LOGGER.debug('Number of Records: %d', len(event.get('Records', [])))
 
-        config = load_config()
+        try:
+            config = load_config()
+        except ConfigError:
+            LOGGER.exception('Error loading config files')
+            return 1 # error
 
         for record in event.get('Records', []):
             payload = StreamPayload(raw_record=record)

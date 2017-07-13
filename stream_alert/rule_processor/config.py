@@ -13,14 +13,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 '''
-
 import json
 import os
 
 from collections import OrderedDict
 
+
 class ConfigError(Exception):
-    pass
+    """Exception class for config file errors"""
 
 def load_config(conf_dir='conf/'):
     """Load the configuration for StreamAlert.
@@ -34,22 +34,22 @@ def load_config(conf_dir='conf/'):
     key denotes the name of the log type, and includes 'keys' used to match
     rules to log fields.
     """
-    conf_files = {
-        'sources': 'sources.json',
-        'logs': 'logs.json'
-    }
-    config = {}
-    for desc, filename in conf_files.iteritems():
-        with open(os.path.join(conf_dir, filename)) as data:
+    conf_files = {'sources', 'logs'}
+    config = dict()
+    for base_name in conf_files:
+        path = '{}.json'.format(os.path.join(conf_dir, base_name))
+        with open(path) as data:
             try:
-                config[desc] = json.load(data, object_pairs_hook=OrderedDict)
+                config[base_name] = json.load(data, object_pairs_hook=OrderedDict)
             except ValueError:
-                raise ConfigError('Invalid JSON format for {}.json'.format(desc))
+                raise ConfigError('Invalid JSON format for {}.json'.format(base_name))
 
-    if validate_config(config):
-        return config
+    if not _validate_config(config):
+        return False
 
-def validate_config(config):
+    return config
+
+def _validate_config(config):
     """Validate the StreamAlert configuration contains a valid structure.
 
     Checks for `logs.json`:
@@ -58,23 +58,27 @@ def validate_config(config):
         - the sources contains either kinesis or s3 keys
         - each sources has a list of logs declared
     """
-    for config_key, settings in config.iteritems():
-        # check log declarations
-        if config_key == 'logs':
-            for log, attrs in settings.iteritems():
-                if not {'schema', 'parser'}.issubset(set(attrs.keys())):
-                    raise ConfigError('Schema or parser missing for {}'.format(log))
+    # Check the log declarations
+    for log, attrs in config['logs'].iteritems():
+        if not {'schema', 'parser'}.issubset(set(attrs)):
+            raise ConfigError('Schema or parser missing for {}'.format(log))
 
-        # check sources attributes
-        elif config_key == 'sources':
-            if not set(settings.keys()).issubset({'kinesis', 's3', 'sns'}):
-                raise ConfigError('Sources missing \'kinesis\', \'s3\', or \'sns\' keys')
-            for log, attrs in settings.iteritems():
-                for entity, entity_attrs in attrs.iteritems():
-                    if 'logs' not in set(entity_attrs.keys()):
-                        raise ConfigError('Logs are not declared for {}'.format(entity))
-                    if len(entity_attrs['logs']) == 0:
-                        raise ConfigError('Log list is empty for {}'.format(entity))
+    # check sources attributes
+    if not set(config['sources']).issubset({'kinesis', 's3', 'sns'}):
+        missing = {'kinesis', 's3', 'sns'} - set(config['sources'])
+        pluralize = 's' if len(missing) > 1 else ''
+        raise ConfigError(
+            'Sources contains invalid key%s: %s',
+            pluralize,
+            ', '.join('\'{}\''.format(key) for key in missing))
+
+    # check sources attributes
+    for attrs in config['sources'].values():
+        for entity, entity_attrs in attrs.iteritems():
+            if 'logs' not in entity_attrs:
+                raise ConfigError('Missing \'logs\' key for entity: {}'.format(entity))
+            if not entity_attrs['logs']:
+                raise ConfigError('List of \'logs\' is empty for entity: {}'.format(entity))
 
     return True
 

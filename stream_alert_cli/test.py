@@ -62,7 +62,7 @@ class TestingSuppressFilter(logging.Filter):
 class RuleProcessorTester(object):
     """Class to encapsulate testing the rule processor"""
 
-    def __init__(self, print_output):
+    def __init__(self, context, print_output):
         """RuleProcessorTester initializer
 
         Args:
@@ -73,6 +73,7 @@ class RuleProcessorTester(object):
                 Warnings and errors captrued during rule processor testing
                 will still be written to stdout regardless of this setting.
         """
+        self.context = context
         # Create the topic used for the mocking of alert sending
         # This is used in stream_alert/rule_processor/sink.py to 'send' alerts
         sns_client = boto3.client('sns', region_name='us-east-1')
@@ -125,6 +126,7 @@ class RuleProcessorTester(object):
 
                 # Run tests on the formatted record
                 alerts, expected_alerts = self.test_rule(
+                    self.context,
                     rule_name,
                     test_record,
                     helpers.format_lambda_test_record(test_record))
@@ -272,7 +274,7 @@ class RuleProcessorTester(object):
                                                    failure[1], color)
 
     @staticmethod
-    def test_rule(rule_name, test_record, formatted_record):
+    def test_rule(context, rule_name, test_record, formatted_record):
         """Feed formatted records into StreamAlert and check for alerts
         Args:
             rule_name [str]: The rule name being tested
@@ -289,9 +291,9 @@ class RuleProcessorTester(object):
         if not expected_alert_count:
             expected_alert_count = 1 if test_record['trigger'] else 0
 
-        # Run the rule processor. Passing 'None' for context
-        # will load a mocked object later. False suppresses sending of alerts
-        processor = StreamAlert(None, False)
+        # Run the rule processor. Passing mocked context object with fake
+        # values and False for suppressing sending of alerts
+        processor = StreamAlert(context, False)
 
         processor.run(event)
 
@@ -506,8 +508,8 @@ def get_context_from_config(cluster, config):
     # Otherwise construct the context from the config using the cluster
     if not cluster:
         context.invoked_function_arn = (
-            'arn:aws:lambda:us-east-1:0123456789012:'
-            'function:streamalert_alert_processor:production')
+            'arn:aws:lambda:us-east-1:123456789012:'
+            'function:test_streamalert_processor:development')
         context.function_name = 'test_streamalert_alert_processor'
         context.mocked = True
     else:
@@ -567,7 +569,7 @@ def stream_alert_test(options, config=None):
         test_alerts = (run_options.get('processor') in {'alert', 'all'} or
                        run_options.get('command') == 'live-test')
 
-        rule_proc_tester = RuleProcessorTester(test_rules)
+        rule_proc_tester = RuleProcessorTester(context, test_rules)
         # Run the rule processor for all rules or designated rule set
         for status, alerts in rule_proc_tester.test_processor(options.rules):
             # If the alert processor should be tested, pass any alerts to it

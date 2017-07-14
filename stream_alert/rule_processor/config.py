@@ -96,21 +96,18 @@ def load_env(context):
         context: The AWS Lambda context object.
 
     Returns:
-        {'lambda_region': 'region_name',
-         'account_id': <ACCOUNT_ID>,
-         'lambda_function_name': 'function_name',
-         'lambda_alias': 'qualifier'}
+        [dict] including the following items:
+            {
+                'lambda_region': 'region_name',
+                'account_id': 'account_id',
+                'lambda_function_name': 'function_name',
+                'lambda_alias': 'qualifier'
+            }
     """
-    env = {}
-    if context:
-        arn = context.invoked_function_arn.split(':')
-        env['lambda_region'] = arn[3]
-        env['account_id'] = arn[4]
-        env['lambda_function_name'] = arn[6]
-        env['lambda_alias'] = arn[7]
-    else:
-        env['lambda_region'] = 'us-east-1'
-        env['account_id'] = '123456789012'
-        env['lambda_function_name'] = 'test_streamalert_rule_processor'
-        env['lambda_alias'] = 'development'
-    return env
+    arn = context.invoked_function_arn.split(':')
+    return {
+        'lambda_region': arn[3],
+        'account_id': arn[4],
+        'lambda_function_name': arn[6],
+        'lambda_alias': arn[7]
+    }

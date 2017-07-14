@@ -26,8 +26,10 @@ from stream_alert.rule_processor.config import (
     ConfigError,
     load_config,
     load_env,
-    validate_config,
+    _validate_config,
 )
+
+from unit.stream_alert_rule_processor.test_helpers import _get_valid_config
 
 @raises(ConfigError)
 def test_load_config_invalid():
@@ -43,151 +45,60 @@ def test_load_config_invalid():
 
 def test_validate_config_valid():
     """Config Validator - Valid Config"""
-    config = {
-        'logs': {
-            'json_log': {
-                'schema': {
-                    'name': 'string'
-                },
-                'parser': 'json'
-            },
-            'csv_log': {
-                'schema': {
-                    'data': 'string',
-                    'uid': 'integer'
-                },
-                'parser': 'csv'
-            }
-        },
-        'sources': {
-            'kinesis': {
-                'stream_1': {
-                    'logs': [
-                        'json_log',
-                        'csv_log'
-                    ]
-                }
-            }
-        }
-    }
+    # Load a valid config
+    config = _get_valid_config()
 
-    validate_result = validate_config(config)
+    validate_result = _validate_config(config)
     assert_equal(validate_result, True)
 
 
 @raises(ConfigError)
 def test_validate_config_no_parsers():
     """Config Validator - No Parsers in Log"""
-    config = {
-        'logs': {
-            'json_log': {
-                'schema': {
-                    'name': 'string'
-                }
-            },
-            'csv_log': {
-                'schema': {
-                    'data': 'string',
-                    'uid': 'integer'
-                }
-            }
-        },
-        'sources': {
-            'kinesis': {
-                'stream_1': {
-                    'logs': [
-                        'json_log',
-                        'csv_log'
-                    ]
-                }
-            }
-        }
-    }
+    # Load a valid config
+    config = _get_valid_config()
 
-    validate_config(config)
+    # Remove the 'parser' keys from the config
+    config['logs']['json_log'].pop('parser')
+    config['logs']['csv_log'].pop('parser')
+
+    _validate_config(config)
 
 
 @raises(ConfigError)
 def test_validate_config_no_logs_key():
     """Config Validator - No Logs Key in Source"""
-    config = {
-        'logs': {
-            'json_log': {
-                'schema': {
-                    'name': 'string'
-                }
-            },
-            'csv_log': {
-                'schema': {
-                    'data': 'string',
-                    'uid': 'integer'
-                }
-            }
-        },
-        'sources': {
-            'kinesis': {
-                'stream_1': {}
-            }
-        }
-    }
+    # Load a valid config
+    config = _get_valid_config()
 
-    validate_config(config)
+    # Remove everything from the sources entry
+    config['sources']['kinesis']['stream_1'] = {}
+
+    _validate_config(config)
 
 
 @raises(ConfigError)
 def test_validate_config_empty_logs_list():
     """Config Validator - Empty Logs List in Source"""
-    config = {
-        'logs': {
-            'json_log': {
-                'schema': {
-                    'name': 'string'
-                }
-            },
-            'csv_log': {
-                'schema': {
-                    'data': 'string',
-                    'uid': 'integer'
-                }
-            }
-        },
-        'sources': {
-            'kinesis': {
-                'stream_1': {
-                    'logs': []
-                }
-            }
-        }
-    }
+    # Load a valid config
+    config = _get_valid_config()
 
-    validate_config(config)
+    # Set the logs key to an empty list
+    config['sources']['kinesis']['stream_1']['logs'] = []
+
+    _validate_config(config)
 
 
 @raises(ConfigError)
 def test_validate_config_invalid_datasources():
     """Config Validator - Invalid Datasources"""
-    config = {
-        'logs': {
-            'json_log': {
-                'schema': {
-                    'name': 'string'
-                }
-            },
-            'csv_log': {
-                'schema': {
-                    'data': 'string',
-                    'uid': 'integer'
-                }
-            }
-        },
-        'sources': {
-            'sqs': {
-                'queue_1': {}
-            }
-        }
-    }
+    # Load a valid config
+    config = _get_valid_config()
 
-    validate_config(config)
+    # Set the sources value to contain an invalid data source ('sqs')
+    config['sources'] = {'sqs': {'queue_1': {}}}
+
+    _validate_config(config)
 
 
 def test_load_env():
@@ -201,14 +112,3 @@ def test_load_env():
     assert_equal(env['account_id'], '555555555555')
     assert_equal(env['lambda_function_name'], 'streamalert_testing')
     assert_equal(env['lambda_alias'], 'production')
-
-
-def test_load_env_development():
-    """Config - Load Development Environment"""
-    env = load_env(None)
-
-    assert_equal(env['lambda_alias'], 'development')
-    assert_equal(env['lambda_function_name'], 'test_streamalert_rule_processor')
-    assert_equal(env['lambda_region'], 'us-east-1')
-    assert_equal(env['account_id'], '123456789012')
-

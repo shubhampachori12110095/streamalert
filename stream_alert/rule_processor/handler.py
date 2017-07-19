@@ -118,8 +118,8 @@ class StreamAlert(object):
     def _s3_process(self, payload, classifier):
         """Process S3 data for alerts"""
         s3_file, s3_object_size = StreamPreParsers.pre_parse_s3(payload.raw_record)
-        count, processed_size = 0, 0
-        for data in StreamPreParsers.read_s3_file(s3_file):
+        line_num, processed_size = 0, 0
+        for line_num, data in StreamPreParsers.read_s3_file(s3_file):
             payload.refresh_record(data)
             self._process_alerts(classifier, payload, data)
 
@@ -129,14 +129,14 @@ class StreamAlert(object):
 
             # Add the current data to the total processed size, +1 to account for line feed
             processed_size += (len(data) + 1)
-            count += 1
+
             # Log a debug message on every 100 lines processed
-            if count % 100 == 0:
-                avg_record_size = ((processed_size - 1) / count)
+            if line_num % 100 == 0:
+                avg_record_size = ((processed_size - 1) / line_num)
                 approx_record_count = s3_object_size / avg_record_size
                 LOGGER.debug('Processed %s records out of an approximate total of %s '
                              '(average record size: %s bytes, total size: %s bytes)',
-                             count, approx_record_count, avg_record_size, s3_object_size)
+                             line_num, approx_record_count, avg_record_size, s3_object_size)
 
     def _sns_process(self, payload, classifier):
         """Process SNS data for alerts"""

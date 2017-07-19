@@ -55,12 +55,13 @@ class StreamPreParsers(object):
         Returns:
             (list) Lines from the downloaded s3 object
         """
-        client = boto3.client('s3', region_name=raw_record['awsRegion'])
         unquote = lambda data: urllib.unquote(data).decode('utf8')
+        region = raw_record['awsRegion']
         bucket = unquote(raw_record['s3']['bucket']['name'])
         key = unquote(raw_record['s3']['object']['key'])
         size = int(raw_record['s3']['object']['size'])
-        downloaded_s3_object = cls._download_s3_object(client, bucket, key, size)
+
+        downloaded_s3_object = cls._download_s3_object(region, bucket, key, size)
 
         return downloaded_s3_object, size
 
@@ -90,11 +91,11 @@ class StreamPreParsers(object):
         _, extension = os.path.splitext(downloaded_s3_object)
 
         if extension == '.gz':
-            for line in gzip.open(downloaded_s3_object, 'r'):
-                yield line.rstrip()
+            for num, line in enumerate(gzip.open(downloaded_s3_object, 'r')):
+                yield num, line.rstrip()
         else:
-            for line in open(downloaded_s3_object, 'r'):
-                yield line.rstrip()
+            for num, line in enumerate(open(downloaded_s3_object, 'r')):
+                yield num, line.rstrip()
 
         # aws lambda apparently does not reallocate disk space when files are
         # removed using os.remove(), so we must truncate them before removal
@@ -107,7 +108,7 @@ class StreamPreParsers(object):
             LOGGER.debug('Removed temp file - %s', downloaded_s3_object)
 
     @classmethod
-    def _download_s3_object(cls, client, bucket, key, size):
+    def _download_s3_object(cls, region, bucket, key, size):
         """Download an object from S3.
 
         Verifies the S3 object is less than or equal to 128MB, and
@@ -116,7 +117,7 @@ class StreamPreParsers(object):
         greatly impacts that time.
 
         Args:
-            client: boto3 s3 client object
+            region [string]: AWS region to use for boto client instance
             bucket (string): s3 bucket to download object from
             key (string): key of s3 object
             size (int): size of s3 object in bytes
@@ -142,6 +143,7 @@ class StreamPreParsers(object):
         suffix = key.replace('/', '-')
         _, downloaded_s3_object = tempfile.mkstemp(suffix=suffix)
         with open(downloaded_s3_object, 'wb') as data:
+            client = boto3.client('s3', region_name=region)
             start_time = time.time()
             client.download_fileobj(bucket, key, data)
 

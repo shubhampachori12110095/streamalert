@@ -99,7 +99,8 @@ class StreamClassifier(object):
         self.config = kwargs['config']
         self._entity_log_sources = []
 
-    def map_source(self, payload):
+    @staticmethod
+    def extract_service_and_entity(raw_record):
         """Map a record to its originating AWS service and entity.
 
         Each raw record contains a set of keys to represent its source.
@@ -111,10 +112,10 @@ class StreamClassifier(object):
             payload.entity: The specific instance of a service which sent the record
 
         Args:
-            payload: A StreamAlert payload object
+            payload: A StreamPayload object
 
         Returns:
-            [boolean] True if the entity's log sources loaded properly
+            [boolean] True if the service and entity for this payload were mapped properly
         """
         # Sns is capitalized below because this is how AWS stores it within the Record
         # Other services, like s3, are not stored like this. Do not alter it!
@@ -124,27 +125,46 @@ class StreamClassifier(object):
             'Sns': lambda r: r['EventSubscriptionArn'].split(':')[5]
         }
 
+        service, entity = '', ''
         # check raw record for either kinesis, s3, or sns keys
         for key, map_function in entity_mapper.iteritems():
-            if key in payload.raw_record:
-                payload.service = key.lower()
+            if key in raw_record:
+                service = key.lower()
                 # map the entity name from a record
-                payload.entity = map_function(payload.raw_record)
+                entity = map_function(raw_record)
                 break
 
-        # if the payload's entity is found in the config and contains logs
-        self._entity_log_sources = self._payload_logs(payload)
+        return service, entity
+
+    def load_sources(self, payload):
+        """Load the sources for this payload.
+
+        Args:
+            payload: A StreamPayload object
+
+        Returns:
+            [boolean] True if the entity's log sources loaded properly
+        """
+        # Clear the list from any previous runs
+        del self._entity_log_sources[:]
+
+        # get all logs for the configured service/entity (s3, kinesis, or sns)
+        service_entities = self._config['sources'].get(payload.service)
+        if not service_entities:
+            LOGGER.error('Service not declared in sources configuration: %s',
+                         payload.service)
+            return False
+
+        config_entity = service_entities.get(payload.entity)
+        if not config_entity:
+            LOGGER.error('Entity [%s] not declared in sources configuration for service: %s',
+                         payload.entity,
+                         payload.service)
+            return False
+
+        self._entity_log_sources = config_entity['logs']
 
         return bool(self._entity_log_sources)
-
-    def _payload_logs(self, payload):
-        # get all logs for the configured service/entity (s3 or kinesis)
-        all_service_entities = self.config['sources'][payload.service]
-        config_entity = all_service_entities.get(payload.entity)
-        if config_entity:
-            return config_entity['logs']
-
-        return False
 
     def _log_metadata(self):
         """Return a mapping of all log sources to a given entity with attributes.

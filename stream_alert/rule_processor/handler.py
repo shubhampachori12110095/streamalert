@@ -66,14 +66,29 @@ class StreamAlert(object):
             LOGGER.exception('Error loading config files')
             return 1 # error
 
+        # Instantiate a classifier that is used for this run
+        classifier = StreamClassifier(config=config)
 
-        for record in event.get('Records', []):
-            payload = StreamPayload(raw_record=record)
-            classifier = StreamClassifier(config=config)
+        for record in records:
+            # Get the service and entity from the payload. If the service/entity
+            # is not in our config, log and error and go onto the next record
+            service, entity = StreamClassifier.extract_service_and_entity(record)
+            if not service:
+                LOGGER.error('No valid service found in payload\'s raw record')
 
-            # If the kinesis stream, s3 bucket, or sns topic is not in our config,
-            # go onto the next record
-            if not classifier.map_source(payload):
+            if not entity:
+                LOGGER.error('Unable to map entity from payload\'s raw record for service %s',
+                             service)
+
+            if not (service and entity):
+                continue
+
+            # Create the StreamPayload to use for encapsulating parsed info
+            payload = StreamPayload(raw_record=record, service=service, entity=entity)
+
+            # If the payload's entity is found in the config and contains logs then
+            # load the sources for this log
+            if not classifier.load_sources(payload):
                 continue
 
             if payload.service == 's3':
@@ -82,8 +97,6 @@ class StreamAlert(object):
                 self._kinesis_process(payload, classifier)
             elif payload.service == 'sns':
                 self._sns_process(payload, classifier)
-            else:
-                LOGGER.error('Unsupported service: %s', payload.service)
 
         LOGGER.debug('%s alerts triggered', len(self.alerts))
         if self.alerts:

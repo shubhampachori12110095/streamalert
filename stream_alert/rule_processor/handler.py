@@ -1,4 +1,21 @@
+'''
+Copyright 2017-present, Airbnb Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'''
 import json
+
+from logging import DEBUG as log_level_debug
 
 from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.config import ConfigError, load_config, load_env
@@ -42,11 +59,13 @@ class StreamAlert(object):
         """
         LOGGER.debug('Number of Records: %d', len(event.get('Records', [])))
 
+        # Try to load the config - validation occurs during load
         try:
             config = load_config()
         except ConfigError:
             LOGGER.exception('Error loading config files')
             return 1 # error
+
 
         for record in event.get('Records', []):
             payload = StreamPayload(raw_record=record)
@@ -64,10 +83,11 @@ class StreamAlert(object):
             elif payload.service == 'sns':
                 self._sns_process(payload, classifier)
             else:
-                LOGGER.info('Unsupported service: %s', payload.service)
+                LOGGER.error('Unsupported service: %s', payload.service)
 
         LOGGER.debug('%s alerts triggered', len(self.alerts))
-        LOGGER.debug('\n%s\n', json.dumps(self.alerts, indent=4))
+        if self.alerts:
+            LOGGER.debug('Alerts:\n%s', json.dumps(self.alerts, indent=2))
 
     def get_alerts(self):
         """Public method to return alerts from class. Useful for testing.
@@ -89,16 +109,21 @@ class StreamAlert(object):
         for data in StreamPreParsers.read_s3_file(s3_file):
             payload.refresh_record(data)
             self._process_alerts(classifier, payload, data)
+
+            # Only do the extra calculations below if debug logging is enabled
+            if not LOGGER.isEnabledFor(log_level_debug):
+                continue
+
             # Add the current data to the total processed size, +1 to account for line feed
             processed_size += (len(data) + 1)
             count += 1
-            # Log an info message on every 100 lines processed
+            # Log a debug message on every 100 lines processed
             if count % 100 == 0:
                 avg_record_size = ((processed_size - 1) / count)
                 approx_record_count = s3_object_size / avg_record_size
-                LOGGER.info('Processed %s records out of an approximate total of %s '
-                            '(average record size: %s bytes, total size: %s bytes)',
-                            count, approx_record_count, avg_record_size, s3_object_size)
+                LOGGER.debug('Processed %s records out of an approximate total of %s '
+                             '(average record size: %s bytes, total size: %s bytes)',
+                             count, approx_record_count, avg_record_size, s3_object_size)
 
     def _sns_process(self, payload, classifier):
         """Process SNS data for alerts"""

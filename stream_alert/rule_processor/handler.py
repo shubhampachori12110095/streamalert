@@ -19,7 +19,8 @@ from logging import DEBUG as log_level_debug
 
 from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.config import ConfigError, load_config, load_env
-from stream_alert.rule_processor.classifier import StreamPayload, StreamClassifier
+from stream_alert.rule_processor.classifier import StreamClassifier
+from stream_alert.rule_processor.payload import StreamPayload
 from stream_alert.rule_processor.pre_parsers import StreamPreParsers
 from stream_alert.rule_processor.rules_engine import StreamRules
 from stream_alert.rule_processor.sink import StreamSink

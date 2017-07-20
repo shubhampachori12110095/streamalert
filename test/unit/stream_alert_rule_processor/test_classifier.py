@@ -24,7 +24,8 @@ from nose.tools import assert_equal, assert_not_equal
 
 import stream_alert.rule_processor.classifier as sa_classifier
 
-from stream_alert.rule_processor.classifier import StreamPayload, StreamClassifier
+from stream_alert.rule_processor.classifier import StreamClassifier
+from stream_alert.rule_processor.payload import StreamPayload
 from stream_alert.rule_processor.pre_parsers import StreamPreParsers
 from stream_alert.rule_processor.config import load_config
 

@@ -20,8 +20,7 @@ from logging import DEBUG as log_level_debug
 from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.config import ConfigError, load_config, load_env
 from stream_alert.rule_processor.classifier import StreamClassifier
-from stream_alert.rule_processor.payload import StreamPayload
-from stream_alert.rule_processor.pre_parsers import StreamPreParsers
+from stream_alert.rule_processor.payload import load_stream_payload
 from stream_alert.rule_processor.rules_engine import StreamRules
 from stream_alert.rule_processor.sink import StreamSink
 
@@ -84,20 +83,17 @@ class StreamAlert(object):
             if not (service and entity):
                 continue
 
-            # Create the StreamPayload to use for encapsulating parsed info
-            payload = StreamPayload(raw_record=record, service=service, entity=entity)
-
-            # If the payload's entity is found in the config and contains logs then
-            # load the sources for this log
-            if not classifier.load_sources(payload):
+            # If the payload's service and entity are found in the config and
+            # contains logs then load the sources for this log
+            if not classifier.load_sources(service, entity):
                 continue
 
-            if payload.service == 's3':
-                self._s3_process(payload, classifier)
-            elif payload.service == 'kinesis':
-                self._kinesis_process(payload, classifier)
-            elif payload.service == 'sns':
-                self._sns_process(payload, classifier)
+            # Create the StreamPayload to use for encapsulating parsed info
+            payload = load_stream_payload(service, entity, record)
+
+            total_failures += self._process_alerts(classifier, payload)
+
+        LOGGER.debug('Invalid log failure count: %d', total_failures)
 
         LOGGER.debug('%s alerts triggered', len(self.alerts))
         if self.alerts:
@@ -111,40 +107,7 @@ class StreamAlert(object):
         """
         return self.alerts
 
-    def _kinesis_process(self, payload, classifier):
-        """Process Kinesis data for alerts"""
-        data = StreamPreParsers.pre_parse_kinesis(payload.raw_record)
-        self._process_alerts(classifier, payload, data)
-
-    def _s3_process(self, payload, classifier):
-        """Process S3 data for alerts"""
-        s3_file, s3_object_size = StreamPreParsers.pre_parse_s3(payload.raw_record)
-        line_num, processed_size = 0, 0
-        for line_num, data in StreamPreParsers.read_s3_file(s3_file):
-            payload.refresh_record(data)
-            self._process_alerts(classifier, payload, data)
-
-            # Only do the extra calculations below if debug logging is enabled
-            if not LOGGER.isEnabledFor(log_level_debug):
-                continue
-
-            # Add the current data to the total processed size, +1 to account for line feed
-            processed_size += (len(data) + 1)
-
-            # Log a debug message on every 100 lines processed
-            if line_num % 100 == 0:
-                avg_record_size = ((processed_size - 1) / line_num)
-                approx_record_count = s3_object_size / avg_record_size
-                LOGGER.debug('Processed %s records out of an approximate total of %s '
-                             '(average record size: %s bytes, total size: %s bytes)',
-                             line_num, approx_record_count, avg_record_size, s3_object_size)
-
-    def _sns_process(self, payload, classifier):
-        """Process SNS data for alerts"""
-        data = StreamPreParsers.pre_parse_sns(payload.raw_record)
-        self._process_alerts(classifier, payload, data)
-
-    def _process_alerts(self, classifier, payload, data):
+    def _process_alerts(self, classifier, payload):
         """Process records for alerts and send them to the correct places
 
         Args:
@@ -152,19 +115,24 @@ class StreamAlert(object):
             payload [StreamPayload]: StreamAlert payload object being processed
             data [string]: Pre parsed data string from a raw_event to be parsed
         """
-        classifier.classify_record(payload, data)
-        if not payload.valid:
-            LOGGER.error('Invalid data: %s\n%s', payload, data)
-            return
+        failures = 0
+        for record in payload.pre_parse():
+            classifier.classify_record(record)
+            if not record.valid:
+                LOGGER.error('Invalid data: %s\n%s', record, record.pre_parsed_record)
+                failures += 1
+                continue
 
-        alerts = StreamRules.process(payload)
-        if not alerts:
-            LOGGER.debug('Valid data, no alerts')
-            return
+            record_alerts = StreamRules.process(record)
+            if not record_alerts:
+                LOGGER.debug('Valid data, no alerts')
+                continue
 
-        # Extend the list of alerts with any new alerts
-        self.alerts.extend(alerts)
+            # Extend the list of alerts with any new alerts
+            self.alerts.extend(record_alerts)
 
-        # Attempt to send them to the alert processor
-        if self.send_alerts:
-            self.sinker.sink(alerts)
+            # Attempt to send them to the alert processor
+            if self.send_alerts:
+                self.sinker.sink(record_alerts)
+
+        return failures

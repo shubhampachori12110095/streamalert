@@ -20,6 +20,7 @@ from botocore.exceptions import ClientError
 
 from stream_alert.rule_processor import LOGGER
 
+
 def _json_dump(alert, indent_value=None):
     def json_dict_serializer(obj):
         """Helper method for marshalling dictionary objects to JSON"""
@@ -34,6 +35,7 @@ def _json_dump(alert, indent_value=None):
 
 class StreamSink(object):
     """StreamSink class is used for sending actual alerts to the alert processor"""
+
     def __init__(self, env):
         """StreamSink initializer
 
@@ -62,7 +64,7 @@ class StreamSink(object):
                     "outputs": rule.outputs,
                     "type": payload.type,
                     "source": {
-                        "service": payload.service,
+                        "service": payload.service(),
                         "entity": payload.entity
                     }
                 }

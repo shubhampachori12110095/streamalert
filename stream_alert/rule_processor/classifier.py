@@ -96,8 +96,8 @@ class StreamPayload(object):
 
 class StreamClassifier(object):
     """Classify, map source, and parse a raw record into its declared type."""
-    def __init__(self, **kwargs):
-        self.config = kwargs['config']
+    def __init__(self, config):
+        self._config = config
         self._entity_log_sources = []
 
     @staticmethod
@@ -167,7 +167,7 @@ class StreamClassifier(object):
 
         return bool(self._entity_log_sources)
 
-    def _log_metadata(self):
+    def _get_log_info_for_source(self):
         """Return a mapping of all log sources to a given entity with attributes.
 
         Args:
@@ -275,12 +275,11 @@ class StreamClassifier(object):
                 values of log_name, root_schema, parser, and parsed_data
         """
         classified_log = namedtuple('ClassifiedLog', 'log_name, root_schema, parser, parsed_data')
-        log_metadata = self._log_metadata()
         valid_parses = []
 
         # Loop over all logs declared in logs.json
-        for log_name, attributes in log_metadata.iteritems():
-            # get the parser type to use for this log
+        for log_name, attributes in self._get_log_info_for_source().iteritems():
+            # Get the parser type to use for this log
             parser_name = payload.type or attributes['parser']
 
             schema = attributes['schema']
@@ -293,7 +292,7 @@ class StreamClassifier(object):
             # Get a list of parsed records
             parsed_data = parser.parse(schema, data)
 
-            LOGGER.debug('schema: %s', schema)
+            LOGGER.debug('Schema: %s', schema)
             if not parsed_data:
                 continue
 
@@ -329,14 +328,18 @@ class StreamClassifier(object):
 
         valid_parse = self._check_valid_parse(valid_parses)
 
-        LOGGER.debug('log_name: %s', valid_parse.log_name)
-        LOGGER.debug('parsed_data: %s', valid_parse.parsed_data)
+        LOGGER.debug('Log name: %s', valid_parse.log_name)
+        LOGGER.debug('Parsed data: %s', valid_parse.parsed_data)
 
-        for data in valid_parse.parsed_data:
+        for parsed_data_value in valid_parse.parsed_data:
             # Convert data types per the schema
             # Use the root schema for the parser due to updates caused by
             # configuration settings such as envelope_keys and optional_keys
-            if not self._convert_type(data, valid_parse.parser.type(), valid_parse.root_schema, valid_parse.parser.options):
+            if not self._convert_type(
+                    parsed_data_value,
+                    valid_parse.parser.type(),
+                    valid_parse.root_schema,
+                    valid_parse.parser.options):
                 return False
 
         payload.log_source = valid_parse.log_name

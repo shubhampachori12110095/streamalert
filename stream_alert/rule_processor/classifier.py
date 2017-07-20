@@ -13,8 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 '''
-from collections import namedtuple
-from copy import deepcopy
+from collections import namedtuple, OrderedDict
 
 from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.parsers import get_parser
@@ -46,15 +45,12 @@ class StreamClassifier(object):
         A Kinesis record will contain a `kinesis` key while a
         S3 record contains `s3`.
 
-        Sets:
-            payload.service: The AWS service which sent the record
-            payload.entity: The specific instance of a service which sent the record
-
         Args:
-            payload: A StreamPayload object
+            raw_record [dict]: A raw payload as a dictionary
 
         Returns:
-            [boolean] True if the service and entity for this payload were mapped properly
+            service [string]: The AWS service which sent the record
+            entity [string]: The specific instance of a service which sent the record
         """
         # Sns is capitalized below because this is how AWS stores it within the Record
         # Other services, like s3, are not stored like this. Do not alter it!
@@ -75,7 +71,7 @@ class StreamClassifier(object):
 
         return service, entity
 
-    def load_sources(self, payload):
+    def load_sources(self, service, entity):
         """Load the sources for this payload.
 
         Args:
@@ -88,17 +84,18 @@ class StreamClassifier(object):
         del self._entity_log_sources[:]
 
         # get all logs for the configured service/entity (s3, kinesis, or sns)
-        service_entities = self._config['sources'].get(payload.service)
+        service_entities = self._config['sources'].get(service)
         if not service_entities:
             LOGGER.error('Service not declared in sources configuration: %s',
-                         payload.service)
+                         service)
             return False
 
-        config_entity = service_entities.get(payload.entity)
+        config_entity = service_entities.get(entity)
         if not config_entity:
-            LOGGER.error('Entity [%s] not declared in sources configuration for service: %s',
-                         payload.entity,
-                         payload.service)
+            LOGGER.error(
+                'Entity [%s] not declared in sources configuration for service: %s',
+                entity,
+                service)
             return False
 
         self._entity_log_sources = config_entity['logs']
@@ -125,18 +122,13 @@ class StreamClassifier(object):
                 }
             }
         """
-        # Make a copy of the log entries to be modified
-        config_logs = deepcopy(self._config['logs'])
+        # Get the logs configuration
+        logs = self._config['logs']
 
-        for log_source in config_logs.keys():
-            category = log_source.split(':')[0]
-            # Remove this log type if it's not one of the sources for this entity
-            if not category in self._entity_log_sources:
-                del config_logs[log_source]
+        return OrderedDict((source, logs[source]) for source in logs.keys()
+                           if source.split(':')[0] in self._entity_log_sources)
 
-        return config_logs
-
-    def classify_record(self, payload, data):
+    def classify_record(self, payload):
         """Classify and type raw record passed into StreamAlert.
 
         Before we apply our rules to a record passed to the lambda function,
@@ -148,9 +140,9 @@ class StreamClassifier(object):
             payload: A StreamAlert payload object
             data: Pre parsed data string from a raw_event to be parsed
         """
-        parse_result = self._parse(payload, data)
+        parse_result = self._parse(payload)
         if all([parse_result,
-                payload.service,
+                payload.service(),
                 payload.entity,
                 payload.type,
                 payload.log_source,
@@ -159,7 +151,8 @@ class StreamClassifier(object):
 
         LOGGER.debug('payload: %s', payload)
 
-    def _check_valid_parse(self, valid_parses):
+    @staticmethod
+    def _check_valid_parse(valid_parses):
         """Check to see if there are multiple schemas that have validly parsed this
         log. If so, fall back on using log_patterns to look for the proper log. If no
         log_patterns exist, or they do not resolve the problem, fall back on using the
@@ -184,7 +177,9 @@ class StreamClassifier(object):
                     for data in valid_parse.parsed_data)):
                 matched_parses.append(valid_parses[i])
             else:
-                LOGGER.debug('log pattern matching failed for schema: %s', valid_parse.root_schema)
+                LOGGER.debug(
+                    'log pattern matching failed for schema: %s',
+                    valid_parse.root_schema)
 
         if matched_parses:
             if len(matched_parses) > 1:
@@ -200,19 +195,19 @@ class StreamClassifier(object):
 
         return valid_parses[0]
 
-    def _process_log_schemas(self, payload, data):
+    def _process_log_schemas(self, payload):
         """Get any log schemas that matched this log format
 
         Args:
             payload: A StreamAlert payload object
-            data: Pre parsed data string from a raw_event to be parsed
 
         Returns:
             [list] A list containing any schemas that matched this log format
                 Each list entry contains the namedtuple of 'ClassifiedLog' with
                 values of log_name, root_schema, parser, and parsed_data
         """
-        classified_log = namedtuple('ClassifiedLog', 'log_name, root_schema, parser, parsed_data')
+        classified_log = namedtuple('ClassifiedLog',
+                                    'log_name, root_schema, parser, parsed_data')
         valid_parses = []
 
         # Loop over all logs declared in logs.json
@@ -228,7 +223,7 @@ class StreamClassifier(object):
             parser = parser_class(options)
 
             # Get a list of parsed records
-            parsed_data = parser.parse(schema, data)
+            parsed_data = parser.parse(schema, payload.pre_parsed_record)
 
             LOGGER.debug('Schema: %s', schema)
             if not parsed_data:
@@ -244,22 +239,21 @@ class StreamClassifier(object):
 
         return valid_parses
 
-    def _parse(self, payload, data):
+    def _parse(self, payload):
         """Parse a record into a declared type.
 
         Args:
             payload: A StreamAlert payload object
-            data: Pre parsed data string from a raw_event to be parsed
 
         Sets:
             payload.log_source: The detected log name from the data_sources config.
             payload.type: The record's type.
-            payload.records: The parsed record.
+            payload.records: The parsed records as a list.
 
         Returns:
             A boolean representing the success of the parse.
         """
-        valid_parses = self._process_log_schemas(payload, data)
+        valid_parses = self._process_log_schemas(payload)
 
         if not valid_parses:
             return False
@@ -286,7 +280,8 @@ class StreamClassifier(object):
 
         return True
 
-    def _convert_type(self, payload, parser_type, schema, options):
+    @classmethod
+    def _convert_type(cls, payload, parser_type, schema, options):
         """Convert a parsed payload's values into their declared types.
 
         If the schema is incorrectly defined for a particular field,
@@ -328,7 +323,7 @@ class StreamClassifier(object):
 
             elif isinstance(value, dict):
                 if not value:
-                    continue # allow empty maps (dict)
+                    continue  # allow empty maps (dict)
 
                 # handle nested values
                 # skip the 'streamalert:envelope_keys' key that we've added during parsing
@@ -338,7 +333,7 @@ class StreamClassifier(object):
                 if 'log_patterns' in options:
                     options['log_patterns'] = options['log_patterns'][key]
 
-                self._convert_type(payload[key], parser_type, schema[key], options)
+                cls._convert_type(payload[key], parser_type, schema[key], options)
 
             elif isinstance(value, list):
                 pass

@@ -43,6 +43,9 @@ class StreamPreParsers(object):
 
         Returns: (string) Base64 decoded data.
         """
+        LOGGER.debug('Pre-parsing record from Kinesis. eventID: %s, eventSourceARN: %s',
+                     raw_record['eventID'], raw_record['eventSourceARN'])
+
         return base64.b64decode(raw_record['kinesis']['data'])
 
     @classmethod
@@ -61,6 +64,9 @@ class StreamPreParsers(object):
         key = unquote(raw_record['s3']['object']['key'])
         size = int(raw_record['s3']['object']['size'])
 
+        LOGGER.debug('Pre-parsing record from S3. Bucket: %s, Key: %s, Size: %d',
+                     bucket, key, size)
+
         downloaded_s3_object = cls._download_s3_object(region, bucket, key, size)
 
         return downloaded_s3_object, size
@@ -74,6 +80,9 @@ class StreamPreParsers(object):
 
         Returns: (string) SNS message data.
         """
+        LOGGER.debug('Pre-parsing record from SNS. MessageId: %s, EventSubscriptionArn: %s',
+                     raw_record['Sns']['MessageId'], raw_record['EventSubscriptionArn'])
+
         return raw_record['Sns']['Message']
 
     @classmethod
@@ -105,7 +114,9 @@ class StreamPreParsers(object):
         # remove the file
         os.remove(downloaded_s3_object)
         if not os.path.exists(downloaded_s3_object):
-            LOGGER.debug('Removed temp file - %s', downloaded_s3_object)
+            LOGGER.debug('Removed temp file: %s', downloaded_s3_object)
+        else:
+            LOGGER.error('Failed to remove temp file: %s', downloaded_s3_object)
 
     @classmethod
     def _download_s3_object(cls, region, bucket, key, size):
@@ -147,7 +158,7 @@ class StreamPreParsers(object):
             start_time = time.time()
             client.download_fileobj(bucket, key, data)
 
-        end_time = time.time() - start_time
-        LOGGER.info('Completed download in %s seconds', round(end_time, 2))
+        total_time = time.time() - start_time
+        LOGGER.info('Completed download in %s seconds', round(total_time, 2))
 
         return downloaded_s3_object

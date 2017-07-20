@@ -101,8 +101,8 @@
       },
       "description": "CloudTrail - PutBucketAcl - True Positive",
       "trigger": true,
-      "source": "prefix_cluster1_stream_alert_kinesis",
-      "service": "kinesis"
+      "source": "example_s3_bucket",
+      "service": "s3"
     },
     {
       "data": {
@@ -205,8 +205,8 @@
       },
       "description": "CloudTrail - PutBucketAcl - False Positive",
       "trigger": false,
-      "source": "prefix_cluster1_stream_alert_kinesis",
-      "service": "kinesis"
+      "source": "example_s3_bucket",
+      "service": "s3"
     }
   ]
 }

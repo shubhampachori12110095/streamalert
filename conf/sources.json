@@ -13,7 +13,15 @@
       "logs": [
         "carbonblack",
         "osquery",
-        "cloudtrail"
+        "cloudtrail",
+        "cloudwatch"
+      ]
+    }
+  },
+  "sns": {
+    "prefix_cluster1_stream_alert_sns": {
+      "logs": [
+        "cloudwatch"
       ]
     }
   }

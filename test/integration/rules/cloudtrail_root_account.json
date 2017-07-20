@@ -42,8 +42,8 @@
             },
             "description": "CloudTrail - Root Account Usage - True Positive",
             "trigger": true,
-            "source": "prefix_cluster1_stream_alert_kinesis",
-            "service": "kinesis"
+            "source": "prefix_cluster1_stream_alert_sns",
+            "service": "sns"
         },
         {
             "data": {
@@ -146,8 +146,8 @@
             },
             "description": "CloudTrail - Root Account Usage - False Positive",
             "trigger": false,
-            "source": "prefix_cluster1_stream_alert_kinesis",
-            "service": "kinesis"
+            "source": "prefix_cluster1_stream_alert_sns",
+            "service": "sns"
         }
     ]
 }

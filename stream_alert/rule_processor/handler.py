@@ -20,6 +20,7 @@ from logging import DEBUG as log_level_debug
 from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.config import ConfigError, load_config, load_env
 from stream_alert.rule_processor.classifier import StreamClassifier
+from stream_alert.rule_processor.metrics import Metrics, put_metric_data
 from stream_alert.rule_processor.payload import load_stream_payload
 from stream_alert.rule_processor.rules_engine import StreamRules
 from stream_alert.rule_processor.sink import StreamSink
@@ -27,6 +28,7 @@ from stream_alert.rule_processor.sink import StreamSink
 
 class StreamAlert(object):
     """Wrapper class for handling all StreamAlert classificaiton and processing"""
+
     def __init__(self, context, send_alerts=True):
         """
         Args:
@@ -38,7 +40,8 @@ class StreamAlert(object):
         """
         self.send_alerts = send_alerts
         self.env = load_env(context)
-        # Instantiate the sink here to handle sending the triggered alerts to the alert processor
+        # Instantiate the sink here to handle sending the triggered alerts to the
+        # alert processor
         self.sinker = StreamSink(self.env)
         self.alerts = []
 
@@ -57,18 +60,24 @@ class StreamAlert(object):
         Returns:
             [integer] exit status code. 0 on success, non-zero on error
         """
-        LOGGER.debug('Number of Records: %d', len(event.get('Records', [])))
+        records = event.get('Records', [])
+        LOGGER.debug('Number of Records: %d', len(records))
+        if not records:
+            return False
+
+        put_metric_data(Metrics.Name.TOTAL_RECORDS, len(records), Metrics.Unit.COUNT)
 
         # Try to load the config - validation occurs during load
         try:
             config = load_config()
         except ConfigError:
             LOGGER.exception('Error loading config files')
-            return 1 # error
+            return False
 
         # Instantiate a classifier that is used for this run
         classifier = StreamClassifier(config=config)
 
+        total_failures = 0
         for record in records:
             # Get the service and entity from the payload. If the service/entity
             # is not in our config, log and error and go onto the next record
@@ -77,8 +86,9 @@ class StreamAlert(object):
                 LOGGER.error('No valid service found in payload\'s raw record')
 
             if not entity:
-                LOGGER.error('Unable to map entity from payload\'s raw record for service %s',
-                             service)
+                LOGGER.error(
+                    'Unable to map entity from payload\'s raw record for service %s',
+                    service)
 
             if not (service and entity):
                 continue
@@ -95,9 +105,18 @@ class StreamAlert(object):
 
         LOGGER.debug('Invalid log failure count: %d', total_failures)
 
+        put_metric_data(Metrics.Name.FAILED_PARSES, total_failures, Metrics.Unit.COUNT)
+
         LOGGER.debug('%s alerts triggered', len(self.alerts))
-        if self.alerts:
+
+        put_metric_data(
+            Metrics.Name.TRIGGERED_ALERTS, len(
+                self.alerts), Metrics.Unit.COUNT)
+
+        if self.alerts and LOGGER.isEnabledFor(log_level_debug):
             LOGGER.debug('Alerts:\n%s', json.dumps(self.alerts, indent=2))
+
+        return total_failures == 0
 
     def get_alerts(self):
         """Public method to return alerts from class. Useful for testing.

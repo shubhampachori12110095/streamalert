@@ -127,7 +127,7 @@ class TestStreamPayload(object):
         metadata = classifier._log_metadata()
 
         # service, entity, metadata test
-        assert_equal(payload.service, 'kinesis')
+        assert_equal(payload.service(), 'kinesis')
         assert_equal(payload.entity, 'test_kinesis_stream')
         assert_equal(set(metadata.keys()), test_kinesis_stream_logs)
 
@@ -150,7 +150,7 @@ class TestStreamPayload(object):
         metadata = classifier._log_metadata()
 
         # service, entity, metadata test
-        assert_equal(payload.service, 'kinesis')
+        assert_equal(payload.service(), 'kinesis')
         assert_equal(payload.entity, 'test_stream_2')
         assert_equal(set(metadata.keys()), test_stream_2_logs)
 

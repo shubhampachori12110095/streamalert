@@ -15,9 +15,9 @@ limitations under the License.
 '''
 import json
 
-import boto3
-
 from datetime import datetime
+
+import boto3
 
 from botocore.exceptions import ClientError
 
@@ -26,8 +26,12 @@ from stream_alert.rule_processor import LOGGER
 
 BOTO_CW_CLIENT = boto3.client('cloudwatch')
 
+
 class Metrics(object):
-    """Class to hold Rule Processor metric name and unit constants"""
+    """Class to hold Rule Processor metric name and unit constants
+    This basically acts as an enum, allowing for the use of dot notation for
+    accessing properties and avoids doing dict lookups a ton.
+    """
     class Name(object):
         """Constant metric names used in the rule processor"""
         FAILED_PARSES = 'RuleProcessorFailedParses'
@@ -73,11 +77,13 @@ def put_metric_data(metric_name, value, unit):
     """Publish custom metric data to CloudWatch.
 
     Args:
-        metric_name [string]: Name of metric to publish to
+        metric_name [string]: Name of metric to publish to. Choices are in
+            `Metrics.Name` above
         value [number]: Numeric information to post to metric. AWS expects
             this to be of type 'float' but will accept any numeric value that
             is not super small (negative) or super large.
-        unit [string]: Unit to use for this metric. Choices are in Metrics above.
+        unit [string]: Unit to use for this metric. Choices are in
+            `Metrics.Unit` above.
     """
     if metric_name not in Metrics.Name.__dict__.values():
         LOGGER.error('Metric name not defined: %s', metric_name)

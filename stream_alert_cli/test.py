@@ -25,7 +25,7 @@ from collections import namedtuple
 from mock import Mock, patch
 
 import boto3
-from moto import mock_lambda, mock_kms, mock_s3, mock_sns
+from moto import mock_cloudwatch, mock_lambda, mock_kms, mock_s3, mock_sns
 
 from stream_alert.alert_processor import main as StreamOutput
 from stream_alert.rule_processor.handler import StreamAlert
@@ -473,6 +473,7 @@ def mock_me(context):
     def wrap(func):
         """Wrap the returned function with or without mocks"""
         if context.mocked:
+            @mock_cloudwatch
             @mock_lambda
             @mock_sns
             @mock_s3
@@ -490,6 +491,7 @@ def mock_me(context):
             return unmocked
 
     return wrap
+
 
 def get_context_from_config(cluster, config):
     """Return a constructed context to be used for testing
@@ -525,6 +527,7 @@ def get_context_from_config(cluster, config):
         context.mocked = False
 
     return context
+
 
 def stream_alert_test(options, config=None):
     """High level function to wrap the integration testing entry point.

@@ -78,10 +78,10 @@ class StreamAlert(object):
         classifier = StreamClassifier(config=config)
 
         total_failures = 0
-        for record in records:
+        for raw_record in records:
             # Get the service and entity from the payload. If the service/entity
             # is not in our config, log and error and go onto the next record
-            service, entity = StreamClassifier.extract_service_and_entity(record)
+            service, entity = StreamClassifier.extract_service_and_entity(raw_record)
             if not service:
                 LOGGER.error('No valid service found in payload\'s raw record')
 
@@ -99,7 +99,9 @@ class StreamAlert(object):
                 continue
 
             # Create the StreamPayload to use for encapsulating parsed info
-            payload = load_stream_payload(service, entity, record)
+            payload = load_stream_payload(service, entity, raw_record)
+            if not payload:
+                continue
 
             total_failures += self._process_alerts(classifier, payload)
 

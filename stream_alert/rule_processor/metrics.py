@@ -117,4 +117,5 @@ def _put_metric(data):
         BOTO_CW_CLIENT.put_metric_data(Namespace='StreamAlert', MetricData=data)
     except ClientError as err:
         LOGGER.exception('Failed to send metric to CloudWatch. Error: %s\nMetric:\n%s',
-                         err.response, json.dumps(data, indent=2))
+                         err.response,
+                         json.dumps(data, indent=2, default=lambda d: d.isoformat()))

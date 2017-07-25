@@ -40,7 +40,7 @@ from unit.stream_alert_alert_processor import (
     REGION
 )
 
-from unit.stream_alert_alert_processor.helpers import _remove_temp_secrets
+from unit.stream_alert_alert_processor.test_helpers import _remove_temp_secrets
 
 # Remove all abstractmethods from __abstractmethods__ so we can
 # instantiate StreamOutputBase for testing

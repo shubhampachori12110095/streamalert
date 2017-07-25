@@ -44,7 +44,7 @@ from unit.stream_alert_alert_processor import (
     REGION
 )
 
-from unit.stream_alert_alert_processor.helpers import (
+from unit.stream_alert_alert_processor.test_helpers import (
     _get_random_alert,
     _get_alert,
     _remove_temp_secrets

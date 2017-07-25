@@ -36,7 +36,7 @@ from unit.stream_alert_alert_processor import (
     FUNCTION_NAME
 )
 
-from unit.stream_alert_alert_processor.helpers import (
+from unit.stream_alert_alert_processor.test_helpers import (
     _get_alert,
     _get_mock_context
 )

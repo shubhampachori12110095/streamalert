@@ -57,14 +57,7 @@ def test_boto_call(boto_mock):
 def test_boto_failed(log_mock, boto_mock):
     """Metrics - Boto Call Failed"""
 
-    err_response = {
-        'Error':
-            {
-                'Code': 100,
-                'Message': 'BAAAD',
-                'BucketName': 'bucket'
-            }
-    }
+    err_response = {'Error': {'Code': 100}}
 
     # Add ClientError side_effect to mock
     boto_mock.side_effect = ClientError(err_response, 'operation')

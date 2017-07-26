@@ -35,8 +35,6 @@ from unit.stream_alert_rule_processor.test_helpers import (
 @patch('stream_alert.rule_processor.handler.load_config', lambda: load_config('test/unit/conf/'))
 class TestStreamAlert(object):
     """Test class for StreamAlert class"""
-    __sa_handler = None
-
     @classmethod
     def setup_class(cls):
         """Setup the class before any methods"""

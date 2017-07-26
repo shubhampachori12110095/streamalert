@@ -86,19 +86,20 @@ class StreamClassifier(object):
         # get all logs for the configured service/entity (s3, kinesis, or sns)
         service_entities = self._config['sources'].get(service)
         if not service_entities:
-            LOGGER.error('Service not declared in sources configuration: %s',
+            LOGGER.error('Service [%s] not declared in sources configuration',
                          service)
             return False
 
         config_entity = service_entities.get(entity)
         if not config_entity:
             LOGGER.error(
-                'Entity [%s] not declared in sources configuration for service: %s',
+                'Entity [%s] not declared in sources configuration for service [%s]',
                 entity,
                 service)
             return False
 
-        self._entity_log_sources = config_entity['logs']
+        # Get a copy of the logs list by slicing here, not a pointer to the list reference
+        self._entity_log_sources = config_entity['logs'][:]
 
         return bool(self._entity_log_sources)
 
@@ -178,20 +179,20 @@ class StreamClassifier(object):
                 matched_parses.append(valid_parses[i])
             else:
                 LOGGER.debug(
-                    'log pattern matching failed for schema: %s',
+                    'Log pattern matching failed for schema: %s',
                     valid_parse.root_schema)
 
         if matched_parses:
             if len(matched_parses) > 1:
-                LOGGER.error('log patterns matched for multiple schemas: %s',
+                LOGGER.error('Log patterns matched for multiple schemas: %s',
                              ', '.join(parse.log_name for parse in matched_parses))
-                LOGGER.error('proceeding with schema for: %s', matched_parses[0].log_name)
+                LOGGER.error('Proceeding with schema for: %s', matched_parses[0].log_name)
 
             return matched_parses[0]
 
-        LOGGER.error('log classification matched for multiple schemas: %s',
+        LOGGER.error('Log classification matched for multiple schemas: %s',
                      ', '.join(parse.log_name for parse in valid_parses))
-        LOGGER.error('proceeding with schema for: %s', valid_parses[0].log_name)
+        LOGGER.error('Proceeding with schema for: %s', valid_parses[0].log_name)
 
         return valid_parses[0]
 
@@ -209,9 +210,10 @@ class StreamClassifier(object):
         classified_log = namedtuple('ClassifiedLog',
                                     'log_name, root_schema, parser, parsed_data')
         valid_parses = []
+        log_info = self._get_log_info_for_source()
 
         # Loop over all logs declared in logs.json
-        for log_name, attributes in self._get_log_info_for_source().iteritems():
+        for log_name, attributes in log_info.iteritems():
             # Get the parser type to use for this log
             parser_name = payload.type or attributes['parser']
 
@@ -269,9 +271,7 @@ class StreamClassifier(object):
             # configuration settings such as envelope_keys and optional_keys
             if not self._convert_type(
                     parsed_data_value,
-                    valid_parse.parser.type(),
-                    valid_parse.root_schema,
-                    valid_parse.parser.options):
+                    valid_parse.root_schema):
                 return False
 
         payload.log_source = valid_parse.log_name
@@ -281,7 +281,7 @@ class StreamClassifier(object):
         return True
 
     @classmethod
-    def _convert_type(cls, payload, parser_type, schema, options):
+    def _convert_type(cls, payload, schema):
         """Convert a parsed payload's values into their declared types.
 
         If the schema is incorrectly defined for a particular field,
@@ -289,7 +289,7 @@ class StreamClassifier(object):
         invalid.
 
         Args:
-            parsed_data: Parsed payload dict
+            payload: Parsed payload dict
             schema: data schema for a specific log source
             options: parser options dict
 
@@ -308,14 +308,16 @@ class StreamClassifier(object):
                 try:
                     payload[key] = int(payload[key])
                 except ValueError:
-                    LOGGER.error('Invalid schema - %s is not an int', key)
+                    LOGGER.error('Invalid schema. Value for key [%s] is not an int: %s',
+                                 key, payload[key])
                     return False
 
             elif value == 'float':
                 try:
                     payload[key] = float(payload[key])
                 except ValueError:
-                    LOGGER.error('Invalid schema - %s is not a float', key)
+                    LOGGER.error('Invalid schema. Value for key [%s] is not a float: %s',
+                                 key, payload[key])
                     return False
 
             elif value == 'boolean':
@@ -325,15 +327,12 @@ class StreamClassifier(object):
                 if not value:
                     continue  # allow empty maps (dict)
 
-                # handle nested values
-                # skip the 'streamalert:envelope_keys' key that we've added during parsing
-                if key == 'streamalert:envelope_keys' and isinstance(payload[key], dict):
+                # Skip the values for the 'streamalert:envelope_keys' key that we've
+                # added during parsing if the do not conform to being a dict
+                if key == 'streamalert:envelope_keys' and not isinstance(payload[key], dict):
                     continue
 
-                if 'log_patterns' in options:
-                    options['log_patterns'] = options['log_patterns'][key]
-
-                cls._convert_type(payload[key], parser_type, schema[key], options)
+                cls._convert_type(payload[key], schema[key])
 
             elif isinstance(value, list):
                 pass

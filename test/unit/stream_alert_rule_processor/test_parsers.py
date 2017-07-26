@@ -16,24 +16,26 @@ limitations under the License.
 import json
 import zlib
 
-from nose.tools import assert_equal, assert_not_equal
+from nose.tools import (
+    assert_equal,
+    assert_is_instance,
+    assert_items_equal,
+    assert_not_equal
+)
 
 from stream_alert.rule_processor.config import load_config
 from stream_alert.rule_processor.parsers import get_parser
 
 
-
-
-
-class TestGzipJsonParser(object):
-    """Test class for GZIP JSON parser"""
+class TestParser(object):
+    """Base class for parser tests"""
     @classmethod
     def setup_class(cls):
         """Setup the class before any methods"""
         # load config
         cls.config = load_config('test/unit/conf')
-        # load JSON parser class
-        cls.parser_class = get_parser('gzip-json')
+        # load the parser class
+        cls.parser_class = get_parser(cls._parser_type())
 
     @classmethod
     def teardown_class(cls):
@@ -41,15 +43,26 @@ class TestGzipJsonParser(object):
         cls.config = None
         cls.parser_class = None
 
+    @classmethod
+    def _parser_type(cls):
+        pass
+
     def parser_helper(self, **kwargs):
         """Helper to return the parser result"""
         data = kwargs['data']
         schema = kwargs['schema']
         options = kwargs['options']
 
-        json_parser = self.parser_class(options)
-        parsed_result = json_parser.parse(schema, data)
+        parser = self.parser_class(options)
+        parsed_result = parser.parse(schema, data)
         return parsed_result
+
+
+class TestGzipJsonParser(TestParser):
+    """Test class for GZIP JSON parser"""
+    @classmethod
+    def _parser_type(cls):
+        return 'gzip-json'
 
     def test_cloudwatch(self):
         """Parse CloudWatch JSON"""
@@ -57,8 +70,9 @@ class TestGzipJsonParser(object):
         options = self.config['logs']['test_cloudwatch']['configuration']
 
         with open('test/unit/fixtures/cloudwatch.json', 'r') as fixture_file:
-            data = fixture_file.readlines()
-        data_record = zlib.compress(data[0].strip())
+            data = fixture_file.readline()
+
+        data_record = zlib.compress(data.strip())
 
         parsed_result = self.parser_helper(data=data_record,
                                            schema=schema,
@@ -67,43 +81,23 @@ class TestGzipJsonParser(object):
         assert_not_equal(parsed_result, False)
         assert_equal(80, len(parsed_result))
 
-        expected_keys = (u'protocol', u'source', u'destination', u'srcport',
-                         u'destport', u'eni', u'action', u'packets', u'bytes',
-                         u'windowstart', u'windowend', u'version', u'account',
-                         u'flowlogstatus', u'streamalert:envelope_keys')
-        expected_envelope_keys = (u'logGroup', u'logStream', u'owner')
+        expected_keys = ['protocol', 'source', 'destination', 'srcport',
+                         'destport', 'eni', 'action', 'packets', 'bytes',
+                         'windowstart', 'windowend', 'version', 'account',
+                         'flowlogstatus', 'streamalert:envelope_keys']
+        expected_envelope_keys = ['logGroup', 'logStream', 'owner']
 
         for result in parsed_result:
-            assert_equal(sorted(expected_keys), sorted(result.keys()))
-            assert_equal(sorted(expected_envelope_keys),
-                         sorted(result['streamalert:envelope_keys'].keys()))
+            assert_items_equal(result.keys(), expected_keys)
+            assert_items_equal(result['streamalert:envelope_keys'].keys(),
+                              expected_envelope_keys)
 
 
-class TestKVParser(object):
+class TestKVParser(TestParser):
     """Test class for KVParser"""
     @classmethod
-    def setup_class(cls):
-        """Setup the class before any methods"""
-        # load config
-        cls.config = load_config('test/unit/conf')
-        # load JSON parser class
-        cls.parser_class = get_parser('kv')
-
-    @classmethod
-    def teardown_class(cls):
-        """Teardown the class after all methods"""
-        cls.config = None
-        cls.parser_class = None
-
-    def parser_helper(self, **kwargs):
-        """Helper to return the parser result"""
-        data = kwargs['data']
-        schema = kwargs['schema']
-        options = kwargs['options']
-
-        kv_parser = self.parser_class(options)
-        parsed_result = kv_parser.parse(schema, data)
-        return parsed_result
+    def _parser_type(cls):
+        return 'kv'
 
     def test_kv_parsing(self):
         """Parse KV - 'key:value,key:value'"""
@@ -125,30 +119,11 @@ class TestKVParser(object):
         assert_equal(parsed_data[0]['name'], 'joe bob')
 
 
-class TestJSONParser(object):
+class TestJSONParser(TestParser):
+    """Test class for JSONParser"""
     @classmethod
-    def setup_class(cls):
-        """Setup the class before any methods"""
-        # load config
-        cls.config = load_config('test/unit/conf')
-        # load JSON parser class
-        cls.parser_class = get_parser('json')
-
-    @classmethod
-    def teardown_class(cls):
-        """Teardown the class after all methods"""
-        cls.config = None
-        cls.parser_class = None
-
-    def parser_helper(self, **kwargs):
-        """Helper to return the parser result"""
-        data = kwargs['data']
-        schema = kwargs['schema']
-        options = kwargs['options']
-
-        json_parser = self.parser_class(options)
-        parsed_result = json_parser.parse(schema, data)
-        return parsed_result
+    def _parser_type(cls):
+        return 'json'
 
     def test_multi_nested_json(self):
         """Parse Multi-layered JSON"""
@@ -181,18 +156,18 @@ class TestJSONParser(object):
 
         # load fixture file
         with open('test/unit/fixtures/inspec.json', 'r') as fixture_file:
-            data = fixture_file.readlines()
+            data = fixture_file.readline()
 
-        data_record = data[0].strip()
+        data_record = data.strip()
         # setup json parser
         parsed_result = self.parser_helper(data=data_record,
                                            schema=schema,
                                            options=options)
 
         assert_equal(len(parsed_result), 2)
-        inspec_keys = (u'impact', u'code', u'tags', u'source_location', u'refs',
-                       u'title', u'results', u'id', u'desc')
-        assert_equal(sorted((inspec_keys)), sorted(parsed_result[0].keys()))
+        inspec_keys = ['impact', 'code', 'tags', 'source_location', 'refs',
+                       'title', 'results', 'id', 'desc']
+        assert_items_equal(parsed_result[0].keys(), inspec_keys)
 
     def test_cloudtrail(self):
         """Parse Cloudtrail JSON"""
@@ -201,9 +176,9 @@ class TestJSONParser(object):
 
         # load fixture file
         with open('test/unit/fixtures/cloudtrail.json', 'r') as fixture_file:
-            data = fixture_file.readlines()
+            data = fixture_file.readline()
 
-        data_record = data[0].strip()
+        data_record = data.strip()
         # setup json parser
         parsed_result = self.parser_helper(data=data_record,
                                            schema=schema,
@@ -241,9 +216,9 @@ class TestJSONParser(object):
         parsed_data = self.parser_helper(data=data, schema=schema, options=options)
 
         # tests
-        assert_equal(set(parsed_data[0].keys()), {'name', 'age', 'city', 'state'})
+        assert_items_equal(parsed_data[0].keys(), ['name', 'age', 'city', 'state'])
         assert_equal(parsed_data[0]['name'], 'john')
-        assert_equal(type(parsed_data[0]['age']), int)
+        assert_is_instance(parsed_data[0]['age'], int)
 
     def test_optional_keys_json(self):
         """Parse JSON with optional top level keys"""

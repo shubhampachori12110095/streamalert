@@ -235,7 +235,7 @@ class TestStreamClassifier(object):
         """StreamClassifier - Load Log Info for Source"""
         self.classifier._entity_log_sources.append('unit_test_simple_log')
 
-        logs = self.classifier._get_log_info_for_source()
+        logs = self.classifier.get_log_info_for_source()
 
         assert_list_equal(logs.keys(), ['unit_test_simple_log'])
 

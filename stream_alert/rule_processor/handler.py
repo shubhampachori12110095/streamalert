@@ -45,6 +45,16 @@ class StreamAlert(object):
         self.sinker = StreamSink(self.env)
         self.alerts = []
 
+        # Try to load the config - validation occurs during load
+        try:
+            config = load_config()
+        except ConfigError:
+            LOGGER.exception('Error loading config files')
+            raise
+
+        # Instantiate a classifier that is used for this run
+        self.classifier = StreamClassifier(config=config)
+
     def run(self, event):
         """StreamAlert Lambda function handler.
 
@@ -67,21 +77,11 @@ class StreamAlert(object):
 
         put_metric_data(Metrics.Name.TOTAL_RECORDS, len(records), Metrics.Unit.COUNT)
 
-        # Try to load the config - validation occurs during load
-        try:
-            config = load_config()
-        except ConfigError:
-            LOGGER.exception('Error loading config files')
-            return False
-
-        # Instantiate a classifier that is used for this run
-        classifier = StreamClassifier(config=config)
-
         total_failures = 0
         for raw_record in records:
             # Get the service and entity from the payload. If the service/entity
             # is not in our config, log and error and go onto the next record
-            service, entity = StreamClassifier.extract_service_and_entity(raw_record)
+            service, entity = self.classifier.extract_service_and_entity(raw_record)
             if not service:
                 LOGGER.error('No valid service found in payload\'s raw record')
 
@@ -95,7 +95,7 @@ class StreamAlert(object):
 
             # If the payload's service and entity are found in the config and
             # contains logs then load the sources for this log
-            if not classifier.load_sources(service, entity):
+            if not self.classifier.load_sources(service, entity):
                 continue
 
             # Create the StreamPayload to use for encapsulating parsed info
@@ -103,7 +103,7 @@ class StreamAlert(object):
             if not payload:
                 continue
 
-            total_failures += self._process_alerts(classifier, payload)
+            total_failures += self._process_alerts(payload)
 
         LOGGER.debug('Invalid log failure count: %d', total_failures)
 
@@ -128,17 +128,16 @@ class StreamAlert(object):
         """
         return self.alerts
 
-    def _process_alerts(self, classifier, payload):
+    def _process_alerts(self, payload):
         """Process records for alerts and send them to the correct places
 
         Args:
-            classifier [StreamClassifier]: Handler for classifying a record's data
             payload [StreamPayload]: StreamAlert payload object being processed
             data [string]: Pre parsed data string from a raw_event to be parsed
         """
         failures = 0
         for record in payload.pre_parse():
-            classifier.classify_record(record)
+            self.classifier.classify_record(record)
             if not record.valid:
                 failures += 1
                 continue

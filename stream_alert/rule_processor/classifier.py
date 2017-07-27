@@ -103,7 +103,7 @@ class StreamClassifier(object):
 
         return bool(self._entity_log_sources)
 
-    def _get_log_info_for_source(self):
+    def get_log_info_for_source(self):
         """Return a mapping of all log sources to a given entity with attributes.
 
         Args:
@@ -213,7 +213,7 @@ class StreamClassifier(object):
         classified_log = namedtuple('ClassifiedLog',
                                     'log_name, root_schema, parser, parsed_data')
         valid_parses = []
-        log_info = self._get_log_info_for_source()
+        log_info = self.get_log_info_for_source()
 
         # Loop over all logs declared in logs.json
         for log_name, attributes in log_info.iteritems():

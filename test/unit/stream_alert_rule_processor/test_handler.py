@@ -18,9 +18,16 @@ import logging
 
 from mock import call, mock_open, patch
 
-from nose.tools import assert_equal, assert_false, assert_list_equal, assert_true
+from nose.tools import (
+    assert_equal,
+    assert_false,
+    assert_list_equal,
+    assert_true,
+    raises
+)
 
 from stream_alert.rule_processor import LOGGER
+from stream_alert.rule_processor.config import ConfigError
 from stream_alert.rule_processor.handler import StreamAlert
 from stream_alert.rule_processor.handler import load_config
 
@@ -32,10 +39,11 @@ from unit.stream_alert_rule_processor.test_helpers import (
 
 
 @patch('stream_alert.rule_processor.handler.put_metric_data', lambda a, b, c: None)
-@patch('stream_alert.rule_processor.handler.load_config', lambda: load_config('test/unit/conf/'))
 class TestStreamAlert(object):
     """Test class for StreamAlert class"""
     @classmethod
+    @patch('stream_alert.rule_processor.handler.load_config',
+           lambda: load_config('test/unit/conf/'))
     def setup_class(cls):
         """Setup the class before any methods"""
         cls.__sa_handler = StreamAlert(_get_mock_context(), False)
@@ -55,14 +63,13 @@ class TestStreamAlert(object):
         passed = self.__sa_handler.run({'Records': []})
         assert_false(passed)
 
-    def test_run_config_error(self):
+    @staticmethod
+    @raises(ConfigError)
+    def test_run_config_error(_):
         """StreamAlert Class - Run, Config Error"""
         mock = mock_open(read_data='non-json string that will raise an exception')
         with patch('__builtin__.open', mock):
-
-            passed = self.__sa_handler.run({'Records': ['record']})
-
-        assert_false(passed)
+            StreamAlert(_get_mock_context(), False)
 
     def test_get_alerts(self):
         """StreamAlert Class - Get Alerts"""

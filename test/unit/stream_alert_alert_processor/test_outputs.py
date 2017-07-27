@@ -618,3 +618,20 @@ class TestLambdaOuput(object):
                                    alert=alert)
 
         log_mock.assert_called_with('Successfully sent alert to %s', self.__service)
+
+    @mock_lambda
+    @patch('stream_alert.alert_processor.outputs.boto3.client')
+    def test_dispatch_qualifier(self, boto_mock):
+        """LambdaOutput dispatch, with qualifier"""
+        alert = self._setup_dispatch()
+
+        self.__dispatcher.dispatch(descriptor='unit_test_lambda_qualifier',
+                                   rule_name='rule_name',
+                                   alert=alert)
+
+        # Check that the boto invoke call was performed with the qualifier
+        boto_mock.return_value.invoke.assert_called_with(
+            FunctionName='unit_test_function',
+            InvocationType='Event',
+            Payload=json.dumps(alert['record']),
+            Qualifier='dev')

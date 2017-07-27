@@ -73,6 +73,7 @@ class RuleProcessorTester(object):
                 Warnings and errors captrued during rule processor testing
                 will still be written to stdout regardless of this setting.
         """
+        self.passing = True
         self.context = context
         # Create the topic used for the mocking of alert sending
         # This is used in stream_alert/rule_processor/sink.py to 'send' alerts
@@ -95,14 +96,12 @@ class RuleProcessorTester(object):
             [generator] yields a tuple containig a boolean of test status and
                 a list of alerts to run through the alert processor
         """
-        all_tests_passed = True
-
         for rule_file, rule_name in get_rule_test_files(rules):
             with open(os.path.join(DIR_RULES, rule_file), 'r') as rule_file_handle:
                 try:
                     contents = json.load(rule_file_handle)
                 except (ValueError, TypeError) as err:
-                    all_tests_passed = False
+                    self.passing = False
                     message = 'Improperly formatted file - {}: {}'.format(
                         type(err).__name__, err)
                     self.rules_fail_pass_warn[2].append((rule_name, message))
@@ -110,7 +109,7 @@ class RuleProcessorTester(object):
 
             test_records = contents.get('records')
             if not test_records:
-                all_tests_passed = False
+                self.passing = False
                 self.rules_fail_pass_warn[2].append(
                     (rule_name, 'No records to test in file'))
                 continue
@@ -119,7 +118,7 @@ class RuleProcessorTester(object):
             # Go over the records and test the applicable rule
             for test_record in test_records:
                 if not self.check_keys(rule_name, test_record):
-                    all_tests_passed = False
+                    self.passing = False
                     continue
 
                 self.apply_helpers(test_record)
@@ -149,10 +148,14 @@ class RuleProcessorTester(object):
                         test_record['service'],
                         test_record['description']])
 
-                all_tests_passed = current_test_passed and all_tests_passed
+                self.passing = (
+                    current_test_passed and
+                    self.passing and
+                    no_errors
+                )
 
                 # yield the result and alerts back to caller
-                yield all_tests_passed, alerts
+                yield alerts
 
                 # Add the name of the rule to the applicable pass or fail list
                 self.rules_fail_pass_warn[current_test_passed].append(
@@ -320,6 +323,7 @@ class AlertProcessorTester(object):
                 performed. If not mocked, the tests will attempt to actually
                 send alerts to outputs.
         """
+        self.passing = True
         self.context = context
         self.kms_alias = 'alias/stream_alert_secrets_test'
         self.secrets_bucket = 'test.streamalert.secrets'
@@ -338,7 +342,6 @@ class AlertProcessorTester(object):
         Return:
             [bool] boolean indicating the status of the alert processor dispatching
         """
-        status = True
         # Set the logger level to info so its not too noisy
         StreamOutput.LOGGER.setLevel(logging.ERROR)
         for alert in alerts:
@@ -346,7 +349,7 @@ class AlertProcessorTester(object):
                 self.setup_outputs(alert)
 
             for passed, output in StreamOutput.handler(alert, self.context):
-                status = status and passed
+                self.passing = self.passing and passed
                 service, descriptor = output.split(':')
                 message = 'sending alert to \'{}\''.format(descriptor)
                 report_output([
@@ -358,8 +361,6 @@ class AlertProcessorTester(object):
                 ])
 
                 self._alert_fail_pass[passed] += 1
-
-        return status
 
     @classmethod
     def report_output_summary(cls):
@@ -552,10 +553,6 @@ def stream_alert_test(options, config=None):
             options [namedtuple]: CLI options (debug, processor, etc)
             context [namedtuple]: A constructed aws context object
         """
-        # Instantiate two status items - one for the rule processor
-        # and one for the alert processor
-        rp_status, ap_status = True, True
-
         if options.debug:
             LOGGER_SA.setLevel(logging.DEBUG)
             LOGGER_SO.setLevel(logging.DEBUG)
@@ -573,23 +570,18 @@ def stream_alert_test(options, config=None):
                        run_options.get('command') == 'live-test')
 
         rule_proc_tester = RuleProcessorTester(context, test_rules)
+        alert_proc_tester = AlertProcessorTester(context)
         # Run the rule processor for all rules or designated rule set
-        for status, alerts in rule_proc_tester.test_processor(options.rules):
-            # If the alert processor should be tested, pass any alerts to it
-            # and store the status over time
+        for alerts in rule_proc_tester.test_processor(options.rules):
+            # If the alert processor should be tested, process any alerts
             if test_alerts:
-                # Update the overall alert processor status with the ongoing status
-                ap_status = AlertProcessorTester(
-                    context).test_processor(alerts) and ap_status
-
-            # Update the overall rule processor status with the ongoing status
-            rp_status = status and rp_status
+                alert_proc_tester.test_processor(alerts)
 
         # Report summary information for the alert processor if it was ran
         if test_alerts:
             AlertProcessorTester.report_output_summary()
 
-        if not (rp_status and ap_status):
+        if not (rule_proc_tester.passing and alert_proc_tester.passing):
             sys.exit(1)
 
     run_tests(options, context)

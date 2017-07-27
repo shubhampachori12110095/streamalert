@@ -163,6 +163,7 @@ class S3Payload(StreamPayload):
         for line_num, data in S3Payload._read_s3_file(s3_file):
 
             self.refresh_record(data)
+            yield self
 
             # Only do the extra calculations below if debug logging is enabled
             if not LOGGER.isEnabledFor(log_level_debug):
@@ -173,18 +174,17 @@ class S3Payload(StreamPayload):
             processed_size += (len(data) + 1)
 
             # Log a debug message on every 100 lines processed
-            if line_num % 100 == 0:
+            if line_num and line_num % 100 == 0:
                 avg_record_size = ((processed_size - 1) / line_num)
-                approx_record_count = self.s3_object_size / avg_record_size
-                LOGGER.debug(
-                    'Processed %s records out of an approximate total of %s '
-                    '(average record size: %s bytes, total size: %s bytes)',
-                    line_num,
-                    approx_record_count,
-                    avg_record_size,
-                    self.s3_object_size)
-
-            yield self
+                if avg_record_size:
+                    approx_record_count = self.s3_object_size / avg_record_size
+                    LOGGER.debug(
+                        'Processed %s records out of an approximate total of %s '
+                        '(average record size: %s bytes, total size: %s bytes)',
+                        line_num,
+                        approx_record_count,
+                        avg_record_size,
+                        self.s3_object_size)
 
         put_metric_data(Metrics.Name.TOTAL_S3_RECORDS, line_num, Metrics.Unit.COUNT)
 

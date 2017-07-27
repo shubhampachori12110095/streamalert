@@ -140,7 +140,6 @@ class StreamAlert(object):
         for record in payload.pre_parse():
             classifier.classify_record(record)
             if not record.valid:
-                LOGGER.error('Invalid data: %s\n%s', record, record.pre_parsed_record)
                 failures += 1
                 continue
 

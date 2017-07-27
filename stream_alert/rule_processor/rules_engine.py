@@ -221,7 +221,7 @@ class StreamRules(object):
                         'log_source': str(payload.log_source),
                         'log_type': payload.type,
                         'outputs': rule.outputs,
-                        'source_service': payload.service,
+                        'source_service': payload.service(),
                         'source_entity': payload.entity
                     }
                     alerts.append(alert)

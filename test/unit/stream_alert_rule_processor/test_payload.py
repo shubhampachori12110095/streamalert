@@ -207,11 +207,17 @@ def test_pre_parse_s3_debug(s3_mock, log_mock):
     s3_payload = load_stream_payload('s3', 'unit_key_name', raw_record)
     S3Payload.s3_object_size = 350
 
-    for index, _ in enumerate(s3_payload.pre_parse()):
-        log_mock.assert_called_with(
-            'Processed %s records out of an approximate total of %s '
-            '(average record size: %s bytes, total size: %s bytes)',
-            (index + 1) * 100, 350, 1, 350)
+    _ = [_ for _ in s3_payload.pre_parse()]
+
+    calls = [call('Processed %s records out of an approximate total of %s '
+                  '(average record size: %s bytes, total size: %s bytes)',
+                  100, 350, 1, 350),
+             call('Processed %s records out of an approximate total of %s '
+                  '(average record size: %s bytes, total size: %s bytes)',
+                  200, 350, 1, 350)
+            ]
+
+    log_mock.assert_has_calls(calls)
 
     # Reset the logger level and stop the patchers
     LOGGER.setLevel(lvl)

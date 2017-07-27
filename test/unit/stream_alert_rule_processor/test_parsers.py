@@ -90,7 +90,7 @@ class TestGzipJsonParser(TestParser):
         for result in parsed_result:
             assert_items_equal(result.keys(), expected_keys)
             assert_items_equal(result['streamalert:envelope_keys'].keys(),
-                              expected_envelope_keys)
+                               expected_envelope_keys)
 
 
 class TestKVParser(TestParser):

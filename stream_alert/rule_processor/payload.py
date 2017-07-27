@@ -104,7 +104,6 @@ class StreamPayload(object):
         Returns:
             [string] The service name for this payload type.
         """
-        pass
 
     @abstractmethod
     def pre_parse(self):
@@ -117,7 +116,6 @@ class StreamPayload(object):
                 returning a generator provides the ability to support multi-record
                 payloads, such as those similar to S3.
         """
-        pass
 
     def refresh_record(self, new_record):
         """Replace the currently loaded record with a new one.
@@ -162,10 +160,9 @@ class S3Payload(StreamPayload):
         """
         s3_file = self._get_object()
         line_num, processed_size = 0, 0
-        for line_num, data in S3Payload.read_s3_file(s3_file):
+        for line_num, data in S3Payload._read_s3_file(s3_file):
 
             self.refresh_record(data)
-            yield self
 
             # Only do the extra calculations below if debug logging is enabled
             if not LOGGER.isEnabledFor(log_level_debug):
@@ -187,6 +184,8 @@ class S3Payload(StreamPayload):
                     avg_record_size,
                     self.s3_object_size)
 
+            yield self
+
         put_metric_data(Metrics.Name.TOTAL_S3_RECORDS, line_num, Metrics.Unit.COUNT)
 
     @classmethod
@@ -206,8 +205,8 @@ class S3Payload(StreamPayload):
         Returns:
             [string] The downloaded path of the S3 object.
         """
-        size_kb = cls.s3_object_size / 1024
-        size_mb = size_kb / 1024
+        size_kb = cls.s3_object_size / 1024.0
+        size_mb = size_kb / 1024.0
         if size_mb > 128:
             raise S3ObjectSizeError('S3 object to download is above 128MB')
 
@@ -256,7 +255,7 @@ class S3Payload(StreamPayload):
         return downloaded_s3_object
 
     @staticmethod
-    def read_s3_file(s3_object):
+    def _read_s3_file(s3_object):
         """Read lines from a downloaded file from S3
 
         Supports reading both gzipped files and plaintext files.
@@ -279,8 +278,7 @@ class S3Payload(StreamPayload):
 
         # AWS Lambda apparently does not reallocate disk space when files are
         # removed using os.remove(), so we must truncate them before removal
-        with open(s3_object, 'w'):
-            pass
+        open(s3_object, 'w')
 
         # Remove the file
         os.remove(s3_object)

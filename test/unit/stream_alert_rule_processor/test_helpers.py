@@ -99,12 +99,51 @@ def _load_payload_by_service(config, service, entity, raw_record):
 def _make_kinesis_raw_record(kinesis_stream, kinesis_data):
     """Helper for creating the kinesis raw record"""
     raw_record = {
-        'eventID': 'e51da7591078af083690d89023c881fdea',
+        'eventID': 'unit test event id',
         'eventSource': 'aws:kinesis',
         'eventSourceARN': 'arn:aws:kinesis:us-east-1:123456789012:stream/{}'
                           .format(kinesis_stream),
         'kinesis': {
             'data': base64.b64encode(kinesis_data)
         }
+    }
+    return raw_record
+
+
+def _make_sns_raw_record(topic_name, sns_data):
+    """Helper for creating the sns raw record"""
+    raw_record = {
+        'EventSource': 'aws:kinesis',
+        'EventSubscriptionArn': 'arn:aws:sns:us-east-1:123456789012:{}'
+                                .format(topic_name),
+        'Sns': {
+            'MessageId': 'unit test message id',
+            'Message': sns_data
+        }
+    }
+    return raw_record
+
+
+def _make_s3_raw_record(bucket, key):
+    """Helper for creating the s3 raw record"""
+    # size = len(s3_data)
+    raw_record = {
+        's3': {
+            'configurationId': 'testConfigRule',
+            'object': {
+                'eTag': '0123456789abcdef0123456789abcdef',
+                'sequencer': '0A1B2C3D4E5F678901',
+                'key': key,
+                'size': 100
+            },
+            'bucket': {
+                'arn': 'arn:aws:s3:::mybucket',
+                'name': bucket,
+                'ownerIdentity': {
+                    'principalId': 'EXAMPLE'
+                }
+            }
+        },
+        'awsRegion': 'us-east-1'
     }
     return raw_record

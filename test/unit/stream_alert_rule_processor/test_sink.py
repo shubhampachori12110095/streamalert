@@ -40,6 +40,7 @@ class TestStreamSink(object):
     def teardown_class(cls):
         """Teardown the class after any methods"""
         cls.sinker = None
+        cls.boto_mock.stop()
 
     def test_streamsink_init(self):
         """StreamSink - Init"""

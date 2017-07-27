@@ -198,24 +198,20 @@ def test_pre_parse_s3_debug(s3_mock, log_mock):
     # Increase the logger level to debug
     LOGGER.setLevel(logging.DEBUG)
 
-    records = ['_first_line_test_first_line_test_first_line_test_'
-               'first_line_test_first_line_test_first_line_test_'
-               'first_line_test_first_line_test_first_line_test',
-               '_second_line_test_second_line_test_second_line_test_'
-               'second_line_test_second_line_test_second_line_test_'
-               'second_line_test_second_line_test_second_line_test_']
+    records = ['_first_line_test_' * 10,
+               '_second_line_test_' * 10]
 
     s3_mock.side_effect = [((100, records[0]), (200, records[1]))]
 
     raw_record = _make_s3_raw_record('unit_bucket_name', 'unit_key_name')
     s3_payload = load_stream_payload('s3', 'unit_key_name', raw_record)
-    S3Payload.s3_object_size = 300
+    S3Payload.s3_object_size = 350
 
     for index, _ in enumerate(s3_payload.pre_parse()):
         log_mock.assert_called_with(
             'Processed %s records out of an approximate total of %s '
             '(average record size: %s bytes, total size: %s bytes)',
-            (index + 1) * 100, 300, 1, 300)
+            (index + 1) * 100, 350, 1, 350)
 
     # Reset the logger level and stop the patchers
     LOGGER.setLevel(lvl)
@@ -264,7 +260,7 @@ def test_s3_download_object(_, __, ___, log_mock):
     s3_payload = load_stream_payload('s3', 'unit_key_name', raw_record)
     s3_payload._download_object('us-east-1', 'unit_bucket_name', 'unit_key_name')
 
-    log_mock.assert_called_with('Completed download in %s seconds', 0)
+    assert_equal(log_mock.call_args_list[1][0][0], 'Completed download in %s seconds')
 
 
 @with_setup(setup=None, teardown=teardown_s3)
@@ -279,8 +275,8 @@ def test_s3_download_object_mb(_, __, ___, log_mock):
     S3Payload.s3_object_size = (127.8 * 1024 * 1024)
     s3_payload._download_object('us-east-1', 'unit_bucket_name', 'unit_key_name')
 
-    calls = [call('Starting download from S3: %s/%s [%s]',
-                  'unit_bucket_name', 'unit_key_name', '127.8MB'),
-             call('Completed download in %s seconds', 0)]
+    assert_equal(log_mock.call_args_list[0],
+                 call('Starting download from S3: %s/%s [%s]',
+                      'unit_bucket_name', 'unit_key_name', '127.8MB'))
 
-    log_mock.assert_has_calls(calls)
+    assert_equal(log_mock.call_args_list[1][0][0], 'Completed download in %s seconds')

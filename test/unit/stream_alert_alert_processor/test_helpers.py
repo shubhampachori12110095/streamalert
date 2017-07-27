@@ -13,95 +13,96 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 '''
-from nose.tools import assert_true, assert_false
+import json
+import os
+import random
+import shutil
+import tempfile
 
-from stream_alert.alert_processor.helpers import (
-    validate_alert
+from collections import OrderedDict
+
+import boto3
+
+from mock import Mock
+
+from unit.stream_alert_alert_processor import (
+    REGION,
+    FUNCTION_NAME
 )
 
-from unit.stream_alert_alert_processor.helpers import _get_alert
 
-def test_valid_alert():
-    """Alert Processor Input Validation - Valid Alert Structure"""
-    # Default valid alert to test
-    valid_alert = _get_alert()
+def _construct_event(count):
+    """Helper to construct a valid test 'event' with an arbitrary number of records"""
+    event = {'Records': []}
+    for index in range(count):
+        event['Records'] = event['Records'] + \
+            [{'Sns': {'Message': json.dumps(_get_alert(index))}}]
 
-    # Test with a valid alert structure
-    assert_true(validate_alert(valid_alert))
-
-
-def test_valid_alert_type():
-    """Alert Processor Input Validation - Invalid Alert Type"""
-    assert_false(validate_alert('not-a-real-alert-object'))
+    return event
 
 
-def test_alert_keys():
-    """Alert Processor Input Validation - Alert Keys Missing"""
-    # Default valid alert to be modified
-    missing_alert_key = _get_alert()
+def _get_mock_context():
+    """Create a fake context object using Mock"""
+    arn = 'arn:aws:lambda:{}:555555555555:function:{}:production'
+    context = Mock(invoked_function_arn=(arn.format(REGION, FUNCTION_NAME)),
+                   function_name='corp-prefix_prod_streamalert_alert_processor')
 
-    # Alter 'metadata' keys to break validation (not all required keys)
-    missing_alert_key.pop('rule_name')
-
-    # Test with invalid metadata keys
-    assert_false(validate_alert(missing_alert_key))
+    return context
 
 
-def test_invalid_record():
-    """Alert Processor Input Validation - Invalid Alert Record"""
-    # Default valid alert to be modified
-    invalid_alert = _get_alert()
+def _get_random_alert(key_count, rule_name, omit_rule_desc=False):
+    """This loop generates key/value pairs with a key of length 6 and
+        value of length 148. when formatted, each line should consume
+        160 characters, account for newline and asterisk for bold.
 
-    # metadata > source value validation
-    invalid_alert['record'] = 100
+        For example:
+        '*000001:* 6D829150B0154BF9BAC733FD25C61FA3D8CD3868AC2A92F19EEE119B
+        9CE8D6094966AA7592CE371002F1F7D82617673FCC9A9DB2A8F432AA791D74AB80BBCAD9\n'
 
-    # Test with invalid metadata source values
-    assert_false(validate_alert(invalid_alert))
+        Therefore, 25*160 = 4000 character message size (exactly the 4000 limit)
+        Anything over 4000 characters will result in multi-part slack messages:
+        55*160 = 8800 & 8800/4000 = ceil(2.2) = 3 messages needed
+    """
+    values = OrderedDict([('{:06}'.format(key),
+                           '{:0148X}'.format(random.randrange(16**128)))
+                          for key in range(key_count)])
 
+    rule_description = ('rule test description', '')[omit_rule_desc]
+    alert = {
+        'record': values,
+        'rule_name': rule_name,
+        'rule_description': rule_description
+    }
 
-def test_metadata_source_value():
-    """Alert Processor Input Validation - Source Entity Value"""
-    # Default valid alert to be modified
-    invalid_metadata_source = _get_alert()
-
-    # metadata > source value validation
-    invalid_metadata_source['source_entity'] = 100
-
-    # Test with invalid metadata source values
-    assert_false(validate_alert(invalid_metadata_source))
-
-
-def test_outputs_type():
-    """Alert Processor Input Validation - Metadata Outputs Bad Type"""
-    # Default valid alert to be modified
-    invalid_metadata_outputs = _get_alert()
-
-    # metadata > outputs type validation
-    invalid_metadata_outputs['outputs'] = {'bad': 'value'}
-
-    # Test with invalid metadata outputs type
-    assert_false(validate_alert(invalid_metadata_outputs))
+    return alert
 
 
-def test_outputs_value_type():
-    """Alert Processor Input Validation - Metadata Outputs Bad Value Type"""
-    # Default valid alert to be modified
-    invalid_metadata_outputs = _get_alert()
+def _get_alert(index=0):
+    return {
+        'record': {
+            'test_index': index,
+            'compressed_size': '9982',
+            'timestamp': '1496947381.18',
+            'node_id': '1',
+            'cb_server': 'cbserver',
+            'size': '21504',
+            'type': 'binarystore.file.added',
+            'file_path': '/tmp/5DA/AD8/0F9AA55DA3BDE84B35656AD8911A22E1.zip',
+            'md5': '0F9AA55DA3BDE84B35656AD8911A22E1'
+        },
+        'log_source': 'carbonblack:binarystore.file.added',
+        'rule_name': 'cb_binarystore_file_added',
+        'outputs': [
+            'slack:unit_test_channel'
+        ],
+        'source_service': 's3',
+        'source_entity': 'corp-prefix.prod.cb.region',
+        'log_type': 'json',
+        'rule_description': 'Info about this rule and what actions to take'
+    }
 
-    # metadata > outputs value validation
-    invalid_metadata_outputs['outputs'] = ['good', 100]
 
-    # Test with invalid metadata outputs value
-    assert_false(validate_alert(invalid_metadata_outputs))
-
-
-def test_metadata_non_string_type():
-    """Alert Processor Input Validation - Metadata Non-String"""
-    # Default valid alert to be modified
-    invalid_metadata_non_string = _get_alert()
-
-    # metadata > non-string value validation
-    invalid_metadata_non_string['log_type'] = 4.5
-
-    # Test with invalid metadata non-string value
-    assert_false(validate_alert(invalid_metadata_non_string))
+def _remove_temp_secrets():
+    """"Blow away the stream_alert_secrets directory in temp"""
+    secrets_dir = os.path.join(tempfile.gettempdir(), "stream_alert_secrets")
+    shutil.rmtree(secrets_dir)

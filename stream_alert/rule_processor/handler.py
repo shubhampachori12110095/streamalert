@@ -29,21 +29,20 @@ from stream_alert.rule_processor.sink import StreamSink
 class StreamAlert(object):
     """Wrapper class for handling all StreamAlert classificaiton and processing"""
 
-    def __init__(self, context, send_alerts=True):
+    def __init__(self, context):
         """
         Args:
             context: An AWS context object which provides metadata on the currently
-                executing lambda function.
-            send_alerts [bool]: Boolean indicating if these alerts should be sent to
-                the alert processor. The default for this is True and can be overridden
-                for testing.
+                executing lambda function. The environment is setup from the arn
+                within the context object. For testing, the lambda alias on the arn
+                will be 'development' - this dictates what to do with alerts.
         """
-        self.send_alerts = send_alerts
         self.env = load_env(context)
         # Instantiate the sink here to handle sending the triggered alerts to the
         # alert processor
         self.sinker = StreamSink(self.env)
-        self.alerts = []
+        self._failed_log_count = 0
+        self._alerts = []
 
         # Try to load the config - validation occurs during load
         try:
@@ -77,7 +76,6 @@ class StreamAlert(object):
 
         put_metric_data(Metrics.Name.TOTAL_RECORDS, len(records), Metrics.Unit.COUNT)
 
-        total_failures = 0
         for raw_record in records:
             # Get the service and entity from the payload. If the service/entity
             # is not in our config, log and error and go onto the next record
@@ -103,22 +101,22 @@ class StreamAlert(object):
             if not payload:
                 continue
 
-            total_failures += self._process_alerts(payload)
+            self._process_alerts(payload)
 
-        LOGGER.debug('Invalid log failure count: %d', total_failures)
+        LOGGER.debug('Invalid log failure count: %d', self._failed_log_count)
 
-        put_metric_data(Metrics.Name.FAILED_PARSES, total_failures, Metrics.Unit.COUNT)
+        put_metric_data(Metrics.Name.FAILED_PARSES, self._failed_log_count, Metrics.Unit.COUNT)
 
-        LOGGER.debug('%s alerts triggered', len(self.alerts))
+        LOGGER.debug('%s alerts triggered', len(self._alerts))
 
         put_metric_data(
             Metrics.Name.TRIGGERED_ALERTS, len(
-                self.alerts), Metrics.Unit.COUNT)
+                self._alerts), Metrics.Unit.COUNT)
 
-        if self.alerts and LOGGER.isEnabledFor(log_level_debug):
-            LOGGER.debug('Alerts:\n%s', json.dumps(self.alerts, indent=2))
+        if self._alerts and LOGGER.isEnabledFor(log_level_debug):
+            LOGGER.debug('Alerts:\n%s', json.dumps(self._alerts, indent=2))
 
-        return total_failures == 0
+        return self._failed_log_count == 0
 
     def get_alerts(self):
         """Public method to return alerts from class. Useful for testing.
@@ -126,7 +124,7 @@ class StreamAlert(object):
         Returns:
             [list] list of alerts in json format
         """
-        return self.alerts
+        return self._alerts
 
     def _process_alerts(self, payload):
         """Process records for alerts and send them to the correct places
@@ -135,12 +133,17 @@ class StreamAlert(object):
             payload [StreamPayload]: StreamAlert payload object being processed
             data [string]: Pre parsed data string from a raw_event to be parsed
         """
-        failures = 0
+        is_production = self.env['lambda_alias'] != 'development'
         for record in payload.pre_parse():
             self.classifier.classify_record(record)
             if not record.valid:
-                failures += 1
+                if is_production:
+                    LOGGER.error('Invalid data: %s\n%s', record, record.pre_parsed_record)
+
+                self._failed_log_count += 1
                 continue
+
+            LOGGER.debug('Payload: %s', record)
 
             record_alerts = StreamRules.process(record)
             if not record_alerts:
@@ -148,10 +151,8 @@ class StreamAlert(object):
                 continue
 
             # Extend the list of alerts with any new alerts
-            self.alerts.extend(record_alerts)
+            self._alerts.extend(record_alerts)
 
             # Attempt to send them to the alert processor
-            if self.send_alerts:
+            if is_production:
                 self.sinker.sink(record_alerts)
-
-        return failures

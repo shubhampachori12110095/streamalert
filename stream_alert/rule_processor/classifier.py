@@ -150,11 +150,6 @@ class StreamClassifier(object):
                 payload.records]):
             payload.valid = True
 
-        if payload.valid:
-            LOGGER.debug('Payload: %s', payload)
-        else:
-            LOGGER.error('Invalid data: %s\n%s', payload, payload.pre_parsed_record)
-
     @staticmethod
     def _check_valid_parse(valid_parses):
         """Check to see if there are multiple schemas that have validly parsed this

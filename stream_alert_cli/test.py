@@ -29,6 +29,7 @@ from moto import mock_cloudwatch, mock_lambda, mock_kms, mock_s3, mock_sns
 
 from stream_alert.alert_processor import main as StreamOutput
 from stream_alert.rule_processor.handler import StreamAlert
+from stream_alert.rule_processor.rules_engine import StreamRules
 from stream_alert_cli import helpers
 from stream_alert_cli.logger import LOGGER_CLI, LOGGER_SA, LOGGER_SO
 from stream_alert_cli.outputs import load_outputs_config
@@ -84,6 +85,7 @@ class RuleProcessorTester(object):
         # passes. Tuple is (rule_name, rule_description)
         self.rules_fail_pass_warn = ([], [], [])
         self.print_output = print_output
+        self.invalid_log_messages = []
 
     def test_processor(self, rules):
         """Perform integration tests for the 'rule' Lambda function
@@ -125,7 +127,6 @@ class RuleProcessorTester(object):
 
                 # Run tests on the formatted record
                 alerts, expected_alerts = self.test_rule(
-                    self.context,
                     rule_name,
                     test_record,
                     helpers.format_lambda_test_record(test_record))
@@ -148,11 +149,7 @@ class RuleProcessorTester(object):
                         test_record['service'],
                         test_record['description']])
 
-                self.passing = (
-                    current_test_passed and
-                    self.passing and
-                    no_errors
-                )
+                self.passing = current_test_passed and self.passing
 
                 # yield the result and alerts back to caller
                 yield alerts
@@ -276,8 +273,7 @@ class RuleProcessorTester(object):
                 print '\t({}/{}) [{}] {}{}'.format(index + 1, warning_count, failure[0],
                                                    failure[1], color)
 
-    @staticmethod
-    def test_rule(context, rule_name, test_record, formatted_record):
+    def test_rule(self, rule_name, test_record, formatted_record):
         """Feed formatted records into StreamAlert and check for alerts
         Args:
             rule_name [str]: The rule name being tested
@@ -286,7 +282,9 @@ class RuleProcessorTester(object):
                 record for the service to be tested
 
         Returns:
-            [bool] boolean indicating if this rule passed
+            [list] alerts that hit for this rule
+            [integer] count of expected alerts for this rule
+            [bool] boolean where False indicates errors occurred during processing
         """
         event = {'Records': [formatted_record]}
 
@@ -296,9 +294,12 @@ class RuleProcessorTester(object):
 
         # Run the rule processor. Passing mocked context object with fake
         # values and False for suppressing sending of alerts
-        processor = StreamAlert(context, False)
+        processor = StreamAlert(self.context)
+        success = processor.run(event)
 
-        processor.run(event)
+        if not success:
+            logs = processor.classifier.get_log_info_for_source()
+            self.analyze_log_delta(logs, rule_name, test_record)
 
         alerts = processor.get_alerts()
 
@@ -308,6 +309,43 @@ class RuleProcessorTester(object):
 
         return alerts, expected_alert_count
 
+    def analyze_log_delta(self, logs, rule_name, test_record):
+        """Provide some additional context on why this test failed
+
+        Args:
+            logs [dict]: dictionary containing all of the log schema
+                information for the source/entity
+            rule_name [str]: name of rule being tested
+            test_record [dict]: actual record data being tested
+        """
+        rule_info = StreamRules._StreamRules__rules[rule_name]
+        test_record_keys = set(test_record['data'])
+        for log in rule_info.logs:
+            log_keys = set(logs[log]['schema'])
+
+            schema_diff = log_keys.difference(test_record_keys)
+            if schema_diff:
+                pluralize = 's' if len(schema_diff) > 1 else ''
+                message = ('Data is invalid due to missing key{} in test record: {}. '
+                           'Rule: \'{}\'. Description: \'{}\''.format(
+                               pluralize,
+                               ', '.join('\'{}\''.format(key) for key in schema_diff),
+                               rule_info.rule_name,
+                               test_record['description']))
+
+                self.invalid_log_messages.append(message)
+
+            test_diff = test_record_keys.difference(log_keys)
+            if test_diff:
+                pluralize = 's' if len(test_diff) > 1 else ''
+                message = ('Data is invalid due to unexpected key{} in test record: {}. '
+                           'Rule: \'{}\'. Description: \'{}\''.format(
+                               pluralize,
+                               ', '.join('\'{}\''.format(key) for key in test_diff),
+                               rule_info.rule_name,
+                               test_record['description']))
+
+                self.invalid_log_messages.append(message)
 
 class AlertProcessorTester(object):
     """Class to encapsulate testing the alert processor"""
@@ -581,7 +619,13 @@ def stream_alert_test(options, config=None):
         if test_alerts:
             AlertProcessorTester.report_output_summary()
 
-        if not (rule_proc_tester.passing and alert_proc_tester.passing):
+        # Print any invalid log messages that we accumulated over this run
+        for message in rule_proc_tester.invalid_log_messages:
+            LOGGER_CLI.error('%s%s%s', COLOR_RED, message, COLOR_RESET)
+
+        if not (rule_proc_tester.passing and
+                alert_proc_tester.passing and
+                (not rule_proc_tester.invalid_log_messages)):
             sys.exit(1)
 
     run_tests(options, context)

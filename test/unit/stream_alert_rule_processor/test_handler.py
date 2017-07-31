@@ -46,7 +46,7 @@ class TestStreamAlert(object):
            lambda: load_config('test/unit/conf/'))
     def setup_class(cls):
         """Setup the class before any methods"""
-        cls.__sa_handler = StreamAlert(_get_mock_context(), False)
+        cls.__sa_handler = StreamAlert(_get_mock_context())
 
     @classmethod
     def teardown_class(cls):
@@ -55,7 +55,9 @@ class TestStreamAlert(object):
 
     def teardown(self):
         """Teardown the class after each methods"""
-        del self.__sa_handler.alerts[:]
+        del self.__sa_handler._alerts[:]
+        self.__sa_handler._failed_log_count = 0
+        self.__sa_handler.env['lambda_alias'] = 'development'
         self.__sa_handler.send_alerts = False
 
     def test_run_no_records(self):
@@ -69,12 +71,12 @@ class TestStreamAlert(object):
         """StreamAlert Class - Run, Config Error"""
         mock = mock_open(read_data='non-json string that will raise an exception')
         with patch('__builtin__.open', mock):
-            StreamAlert(_get_mock_context(), False)
+            StreamAlert(_get_mock_context())
 
     def test_get_alerts(self):
         """StreamAlert Class - Get Alerts"""
         default_list = ['alert1', 'alert2']
-        self.__sa_handler.alerts = default_list
+        self.__sa_handler._alerts = default_list
 
         assert_list_equal(self.__sa_handler.get_alerts(), default_list)
 
@@ -157,6 +159,9 @@ class TestStreamAlert(object):
 
         # Replace the good log data with bad data
         event['Records'][0]['kinesis']['data'] = base64.b64encode('{"bad": "data"}')
+
+        # Swap out the alias so the logging occurs
+        self.__sa_handler.env['lambda_alias'] = 'production'
         self.__sa_handler.run(event)
 
         assert_equal(log_mock.call_args[0][0], 'Invalid data: %s\n%s')
@@ -172,6 +177,9 @@ class TestStreamAlert(object):
 
         # Set send_alerts to true so the sink happens
         self.__sa_handler.send_alerts = True
+
+        # Swap out the alias so the logging occurs
+        self.__sa_handler.env['lambda_alias'] = 'production'
 
         self.__sa_handler.run(_get_valid_event())
 

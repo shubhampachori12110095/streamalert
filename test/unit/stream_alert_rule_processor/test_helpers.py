@@ -29,7 +29,7 @@ from unit.stream_alert_rule_processor import (
 
 def _get_mock_context():
     """Create a fake context object using Mock"""
-    arn = 'arn:aws:lambda:{}:123456789012:function:{}:production'
+    arn = 'arn:aws:lambda:{}:123456789012:function:{}:development'
     context = Mock(invoked_function_arn=(arn.format(REGION, FUNCTION_NAME)),
                    function_name=FUNCTION_NAME)
 

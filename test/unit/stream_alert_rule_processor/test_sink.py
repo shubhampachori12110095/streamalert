@@ -42,6 +42,10 @@ class TestStreamSink(object):
         cls.sinker = None
         cls.boto_mock.stop()
 
+    def teardown(self):
+        """Teardown the class after each methods"""
+        self.sinker.env['lambda_alias'] = 'development'
+
     def test_streamsink_init(self):
         """StreamSink - Init"""
         assert_equal(self.sinker.function, 'corp-prefix_prod_streamalert_alert_processor')
@@ -85,6 +89,9 @@ class TestStreamSink(object):
                 'RequestId': 'reqID'
             }
         }]
+
+        # Swap out the alias so the logging occurs
+        self.sinker.env['lambda_alias'] = 'production'
 
         self.sinker.sink(['alert!!!'])
 

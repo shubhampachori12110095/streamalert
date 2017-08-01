@@ -15,7 +15,7 @@ limitations under the License.
 '''
 import json
 
-from mock import call, Mock, patch
+from mock import call, patch
 
 from nose.tools import (
     assert_equal,
@@ -80,8 +80,10 @@ class TestStreamClassifier(object):
 
         self.classifier._convert_type(payload, schema)
 
-        log_mock.assert_called_with('Invalid schema. Value for key [%s] is not an int: %s',
-                                    'key_01', 'NotInt')
+        log_mock.assert_called_with(
+            'Invalid schema. Value for key [%s] is not an int: %s',
+            'key_01',
+            'NotInt')
 
     def test_convert_type_valid_float(self):
         """StreamClassifier - Convert Type, Valid Float"""
@@ -100,8 +102,10 @@ class TestStreamClassifier(object):
 
         self.classifier._convert_type(payload, schema)
 
-        log_mock.assert_called_with('Invalid schema. Value for key [%s] is not a float: %s',
-                                    'key_01', 'NotFloat')
+        log_mock.assert_called_with(
+            'Invalid schema. Value for key [%s] is not a float: %s',
+            'key_01',
+            'NotFloat')
 
     @patch('logging.Logger.error')
     def test_convert_type_unsup_type(self, log_mock):
@@ -153,7 +157,6 @@ class TestStreamClassifier(object):
         # Make sure the list was not modified
         assert_equal(payload['streamalert:envelope_keys'], 'bad_value')
 
-
     def test_service_entity_ext_kinesis(self):
         """StreamClassifier - Extract Service and Entity, Kinesis"""
         raw_record = {
@@ -178,7 +181,6 @@ class TestStreamClassifier(object):
 
         assert_equal(service, 's3')
         assert_equal(entity, 'unit_test_bucket')
-
 
     def test_service_entity_ext_sns(self):
         """StreamClassifier - Extract Service and Entity, SNS"""
@@ -255,7 +257,7 @@ class TestStreamClassifier(object):
         })
 
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = load_stream_payload(service, entity, raw_record)
+        payload = load_stream_payload(service, entity, raw_record, None)
         payload = payload.pre_parse().next()
 
         result = self.classifier._parse(payload)
@@ -282,7 +284,7 @@ class TestStreamClassifier(object):
         service = 'kinesis'
         entity = 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = load_stream_payload(service, entity, raw_record)
+        payload = load_stream_payload(service, entity, raw_record, None)
 
         self.classifier.load_sources(service, entity)
 
@@ -312,7 +314,7 @@ class TestStreamClassifier(object):
         service = 'kinesis'
         entity = 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = load_stream_payload(service, entity, raw_record)
+        payload = load_stream_payload(service, entity, raw_record, None)
 
         self.classifier.load_sources(service, entity)
 
@@ -326,7 +328,6 @@ class TestStreamClassifier(object):
         log_mock.assert_called_with(
             'Proceeding with schema for: %s', 'test_multiple_schemas:01'
         )
-
 
     @patch('logging.Logger.error')
     def test_mult_schema_match(self, log_mock):
@@ -343,7 +344,7 @@ class TestStreamClassifier(object):
         service = 'kinesis'
         entity = 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = load_stream_payload(service, entity, raw_record)
+        payload = load_stream_payload(service, entity, raw_record, None)
 
         self.classifier.load_sources(service, entity)
 

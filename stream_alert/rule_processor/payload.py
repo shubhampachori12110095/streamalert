@@ -26,10 +26,10 @@ from urllib import unquote
 import boto3
 
 from stream_alert.rule_processor import LOGGER
-from stream_alert.rule_processor.metrics import Metrics, put_metric_data
+from stream_alert.rule_processor.metrics import Metrics
 
 
-def load_stream_payload(service, entity, raw_record):
+def load_stream_payload(service, entity, raw_record, metrics):
     """Returns the right StreamPayload subclass for this service
 
     Args:
@@ -45,7 +45,7 @@ def load_stream_payload(service, entity, raw_record):
         LOGGER.error('Service payload not supported: %s', service)
         return
 
-    return payload_map[service](raw_record=raw_record, entity=entity)
+    return payload_map[service](raw_record=raw_record, entity=entity, metrics=metrics)
 
 
 class StreamPayload(object):
@@ -82,6 +82,7 @@ class StreamPayload(object):
         """
         self.raw_record = kwargs['raw_record']
         self.entity = kwargs['entity']
+        self.metrics = kwargs['metrics']
 
         self.pre_parsed_record = None
         self.type = None
@@ -186,10 +187,9 @@ class S3Payload(StreamPayload):
                         avg_record_size,
                         self.s3_object_size)
 
-        put_metric_data(Metrics.Name.TOTAL_S3_RECORDS, line_num, Metrics.Unit.COUNT)
+        self.metrics.put_metric_data(Metrics.Name.TOTAL_S3_RECORDS, line_num, Metrics.Unit.COUNT)
 
-    @classmethod
-    def _download_object(cls, region, bucket, key):
+    def _download_object(self, region, bucket, key):
         """Download an object from S3.
 
         Verifies the S3 object is less than or equal to 128MB, and
@@ -205,7 +205,7 @@ class S3Payload(StreamPayload):
         Returns:
             [string] The downloaded path of the S3 object.
         """
-        size_kb = cls.s3_object_size / 1024.0
+        size_kb = self.s3_object_size / 1024.0
         size_mb = size_kb / 1024.0
         if size_mb > 128:
             raise S3ObjectSizeError('S3 object to download is above 128MB')
@@ -231,7 +231,7 @@ class S3Payload(StreamPayload):
         LOGGER.info('Completed download in %s seconds', round(total_time, 2))
 
         # Publish a metric on how long this object took to download
-        put_metric_data(Metrics.Name.S3_DOWNLOAD_TIME, total_time, Metrics.Unit.SECONDS)
+        self.metrics.put_metric_data(Metrics.Name.S3_DOWNLOAD_TIME, total_time, Metrics.Unit.SECONDS)
 
         return downloaded_s3_object
 
@@ -250,7 +250,7 @@ class S3Payload(StreamPayload):
         LOGGER.debug('Pre-parsing record from S3. Bucket: %s, Key: %s, Size: %d',
                      bucket, key, self.s3_object_size)
 
-        downloaded_s3_object = S3Payload._download_object(region, bucket, key)
+        downloaded_s3_object = self._download_object(region, bucket, key)
 
         return downloaded_s3_object
 

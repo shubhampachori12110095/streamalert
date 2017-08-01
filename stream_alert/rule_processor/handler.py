@@ -20,7 +20,7 @@ from logging import DEBUG as log_level_debug
 from stream_alert.rule_processor import LOGGER
 from stream_alert.rule_processor.config import ConfigError, load_config, load_env
 from stream_alert.rule_processor.classifier import StreamClassifier
-from stream_alert.rule_processor.metrics import Metrics, put_metric_data
+from stream_alert.rule_processor.metrics import Metrics
 from stream_alert.rule_processor.payload import load_stream_payload
 from stream_alert.rule_processor.rules_engine import StreamRules
 from stream_alert.rule_processor.sink import StreamSink
@@ -37,13 +37,6 @@ class StreamAlert(object):
                 within the context object. For testing, the lambda alias on the arn
                 will be 'development' - this dictates what to do with alerts.
         """
-        self.env = load_env(context)
-        # Instantiate the sink here to handle sending the triggered alerts to the
-        # alert processor
-        self.sinker = StreamSink(self.env)
-        self._failed_log_count = 0
-        self._alerts = []
-
         # Try to load the config - validation occurs during load
         try:
             config = load_config()
@@ -51,8 +44,19 @@ class StreamAlert(object):
             LOGGER.exception('Error loading config files')
             raise
 
+        # Load the environment from the context arn
+        self.env = load_env(context)
+
+        # Instantiate the sink here to handle sending the triggered alerts to the
+        # alert processor
+        self.sinker = StreamSink(self.env)
+
         # Instantiate a classifier that is used for this run
         self.classifier = StreamClassifier(config=config)
+
+        self.metrics = Metrics(self.env['lambda_region'])
+        self._failed_log_count = 0
+        self._alerts = []
 
     def run(self, event):
         """StreamAlert Lambda function handler.
@@ -74,7 +78,10 @@ class StreamAlert(object):
         if not records:
             return False
 
-        put_metric_data(Metrics.Name.TOTAL_RECORDS, len(records), Metrics.Unit.COUNT)
+        self.metrics.put_metric_data(
+            Metrics.Name.TOTAL_RECORDS,
+            len(records),
+            Metrics.Unit.COUNT)
 
         for raw_record in records:
             # Get the service and entity from the payload. If the service/entity
@@ -97,7 +104,7 @@ class StreamAlert(object):
                 continue
 
             # Create the StreamPayload to use for encapsulating parsed info
-            payload = load_stream_payload(service, entity, raw_record)
+            payload = load_stream_payload(service, entity, raw_record, self.metrics)
             if not payload:
                 continue
 
@@ -105,11 +112,14 @@ class StreamAlert(object):
 
         LOGGER.debug('Invalid log failure count: %d', self._failed_log_count)
 
-        put_metric_data(Metrics.Name.FAILED_PARSES, self._failed_log_count, Metrics.Unit.COUNT)
+        self.metrics.put_metric_data(
+            Metrics.Name.FAILED_PARSES,
+            self._failed_log_count,
+            Metrics.Unit.COUNT)
 
         LOGGER.debug('%s alerts triggered', len(self._alerts))
 
-        put_metric_data(
+        self.metrics.put_metric_data(
             Metrics.Name.TRIGGERED_ALERTS, len(
                 self._alerts), Metrics.Unit.COUNT)
 
@@ -138,7 +148,8 @@ class StreamAlert(object):
             self.classifier.classify_record(record)
             if not record.valid:
                 if is_production:
-                    LOGGER.error('Invalid data: %s\n%s', record, record.pre_parsed_record)
+                    LOGGER.error('Log failed to match any defined schemas: %s\n%s',
+                                 record, record.pre_parsed_record)
 
                 self._failed_log_count += 1
                 continue

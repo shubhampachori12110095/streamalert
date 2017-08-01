@@ -16,7 +16,7 @@ limitations under the License.
 import base64
 import logging
 
-from mock import call, mock_open, patch
+from mock import call, Mock, mock_open, patch
 
 from nose.tools import (
     assert_equal,
@@ -38,7 +38,7 @@ from unit.stream_alert_rule_processor.test_helpers import (
 )
 
 
-@patch('stream_alert.rule_processor.handler.put_metric_data', lambda a, b, c: None)
+@patch('stream_alert.rule_processor.metrics.Metrics.put_metric_data', Mock())
 class TestStreamAlert(object):
     """Test class for StreamAlert class"""
     @classmethod
@@ -117,14 +117,23 @@ class TestStreamAlert(object):
     @patch('stream_alert.rule_processor.handler.load_stream_payload')
     @patch('stream_alert.rule_processor.handler.StreamClassifier.load_sources')
     @patch('stream_alert.rule_processor.handler.StreamClassifier.extract_service_and_entity')
-    def test_run_load_payload_bad(self, extract_mock, load_sources_mock, load_payload_mock):
+    def test_run_load_payload_bad(
+            self,
+            extract_mock,
+            load_sources_mock,
+            load_payload_mock):
         """StreamAlert Class - Run, Loaded Payload Fail"""
         extract_mock.return_value = ('lambda', 'entity')
         load_sources_mock.return_value = True
 
         self.__sa_handler.run({'Records': ['record']})
 
-        load_payload_mock.assert_called_with('lambda', 'entity', 'record')
+        load_payload_mock.assert_called_with(
+            'lambda',
+            'entity',
+            'record',
+            self.__sa_handler.metrics
+        )
 
     @patch('stream_alert.rule_processor.handler.StreamRules.process')
     @patch('stream_alert.rule_processor.handler.StreamClassifier.extract_service_and_entity')
@@ -209,7 +218,11 @@ class TestStreamAlert(object):
     @patch('stream_alert.rule_processor.handler.load_stream_payload')
     @patch('stream_alert.rule_processor.handler.StreamClassifier.load_sources')
     @patch('stream_alert.rule_processor.handler.StreamClassifier.extract_service_and_entity')
-    def test_run_no_payload_class(self, extract_mock, load_sources_mock, load_payload_mock):
+    def test_run_no_payload_class(
+            self,
+            extract_mock,
+            load_sources_mock,
+            load_payload_mock):
         """StreamAlert Class - Run, No Payload Class"""
         extract_mock.return_value = ('blah', 'entity')
         load_sources_mock.return_value = True

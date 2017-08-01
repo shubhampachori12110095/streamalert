@@ -17,53 +17,67 @@ from mock import patch
 
 from botocore.exceptions import ClientError
 
-from stream_alert.rule_processor.metrics import put_metric_data, _put_metric
+from stream_alert.rule_processor.metrics import Metrics
+
+from unit.stream_alert_rule_processor import REGION
 
 
-@patch('logging.Logger.error')
-def test_invalid_metric_name(log_mock):
-    """Metrics - Invalid Name"""
-    put_metric_data('bad metric name', 100, 'Seconds')
+class TestMetrics(object):
+    """Test class for Metrics class"""
+    @classmethod
+    def setup_class(cls):
+        """Setup the class before any methods"""
+        cls.__metrics = Metrics(REGION)
 
-    log_mock.assert_called_with('Metric name not defined: %s', 'bad metric name')
+    @classmethod
+    def teardown_class(cls):
+        """Teardown the class after all methods"""
+        cls.__metrics = None
 
+    @patch('logging.Logger.error')
+    def test_invalid_metric_name(self, log_mock):
+        """Metrics - Invalid Name"""
+        self.__metrics.put_metric_data('bad metric name', 100, 'Seconds')
 
-@patch('logging.Logger.error')
-def test_invalid_metric_unit(log_mock):
-    """Metrics - Invalid Unit Type"""
-    put_metric_data('RuleProcessorFailedParses', 100, 'Total')
+        log_mock.assert_called_with('Metric name not defined: %s', 'bad metric name')
 
-    log_mock.assert_called_with('Metric unit not defined: %s', 'Total')
+    @patch('logging.Logger.error')
+    def test_invalid_metric_unit(self, log_mock):
+        """Metrics - Invalid Unit Type"""
+        self.__metrics.put_metric_data('RuleProcessorFailedParses', 100, 'Total')
 
+        log_mock.assert_called_with('Metric unit not defined: %s', 'Total')
 
-@patch('stream_alert.rule_processor.metrics._put_metric')
-def test_valid_metric(metric_mock):
-    """Metrics - Valid Metric"""
-    put_metric_data('RuleProcessorFailedParses', 100, 'Count')
+    @patch('stream_alert.rule_processor.metrics.Metrics._put_metric')
+    def test_valid_metric(self, metric_mock):
+        """Metrics - Valid Metric"""
+        self.__metrics.put_metric_data('RuleProcessorFailedParses', 100, 'Count')
 
-    metric_mock.assert_called()
+        metric_mock.assert_called()
 
+    @staticmethod
+    @patch('stream_alert.rule_processor.metrics.boto3')
+    def test_boto_call(boto_mock):
+        """Metrics - Boto Call Params"""
 
-@patch('stream_alert.rule_processor.metrics.BOTO_CW_CLIENT.put_metric_data')
-def test_boto_call(boto_mock):
-    """Metrics - Boto Call Params"""
+        Metrics(REGION)._put_metric([{'test': 'info'}])
+        boto_mock.client.return_value.put_metric_data.assert_called_with(
+            Namespace='StreamAlert', MetricData=[{'test': 'info'}])
 
-    _put_metric([{'test': 'info'}])
-    boto_mock.assert_called_with(Namespace='StreamAlert', MetricData=[{'test': 'info'}])
+    @staticmethod
+    @patch('stream_alert.rule_processor.metrics.boto3')
+    @patch('logging.Logger.exception')
+    def test_boto_failed(log_mock, boto_mock):
+        """Metrics - Boto Call Failed"""
+        err_response = {'Error': {'Code': 100}}
 
+        # Add ClientError side_effect to mock
+        boto_mock.client.return_value.put_metric_data.side_effect = ClientError(
+            err_response, 'operation')
 
-@patch('stream_alert.rule_processor.metrics.BOTO_CW_CLIENT.put_metric_data')
-@patch('logging.Logger.exception')
-def test_boto_failed(log_mock, boto_mock):
-    """Metrics - Boto Call Failed"""
+        Metrics(REGION)._put_metric([{'test': 'info'}])
 
-    err_response = {'Error': {'Code': 100}}
-
-    # Add ClientError side_effect to mock
-    boto_mock.side_effect = ClientError(err_response, 'operation')
-
-    _put_metric([{'test': 'info'}])
-
-    log_mock.assert_called_with('Failed to send metric to CloudWatch. Error: %s\nMetric data:\n%s',
-                                err_response,
-                                '[\n  {\n    "test": "info"\n  }\n]')
+        log_mock.assert_called_with(
+            'Failed to send metric to CloudWatch. Error: %s\nMetric data:\n%s',
+            err_response,
+            '[\n  {\n    "test": "info"\n  }\n]')

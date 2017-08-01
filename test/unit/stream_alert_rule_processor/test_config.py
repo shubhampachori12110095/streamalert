@@ -34,12 +34,8 @@ from unit.stream_alert_rule_processor.test_helpers import _get_valid_config
 @raises(ConfigError)
 def test_load_config_invalid():
     """Config Validator - Load Config - Invalid"""
-    m = mock_open()
-    with patch('__builtin__.open', m, create=True):
-        with open('conf/logs.json', 'w') as conf_logs:
-            conf_logs.write('test logs string that will throw an error')
-        with open('conf/sources.json', 'w') as conf_sources:
-            conf_sources.write('test sources string that will throw an error')
+    mocker = mock_open(read_data='test string that will throw an error')
+    with patch('__builtin__.open', mocker):
         load_config()
 
 

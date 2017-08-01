@@ -173,7 +173,7 @@ class TestStreamAlert(object):
         self.__sa_handler.env['lambda_alias'] = 'production'
         self.__sa_handler.run(event)
 
-        assert_equal(log_mock.call_args[0][0], 'Invalid data: %s\n%s')
+        assert_equal(log_mock.call_args[0][0], 'Log failed to match any defined schemas: %s\n%s')
         assert_equal(log_mock.call_args[0][2], '{"bad": "data"}')
 
     @patch('stream_alert.rule_processor.sink.StreamSink.sink')

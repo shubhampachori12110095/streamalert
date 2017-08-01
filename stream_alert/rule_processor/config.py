@@ -44,8 +44,8 @@ def load_config(conf_dir='conf/'):
             except ValueError:
                 raise ConfigError('Invalid JSON format for {}.json'.format(base_name))
 
-    if not _validate_config(config):
-        return False
+    # Validate the config. This will raise an exception on any errors, which bubbles up
+    _validate_config(config)
 
     return config
 

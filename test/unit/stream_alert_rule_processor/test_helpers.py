@@ -83,7 +83,7 @@ def _get_valid_event(count=1):
     return {'Records': [raw_record for _ in range(count)]}
 
 
-def _load_payload_by_service(config, service, entity, raw_record):
+def _load_and_classify_payload(config, service, entity, raw_record):
 
     # prepare the payloads
     payload = load_stream_payload(service, entity, raw_record, None)

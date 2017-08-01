@@ -70,11 +70,9 @@ class TestGzipJsonParser(TestParser):
         options = self.config['logs']['test_cloudwatch']['configuration']
 
         with open('test/unit/fixtures/cloudwatch.json', 'r') as fixture_file:
-            data = fixture_file.readline()
+            data = zlib.compress(fixture_file.readline().strip())
 
-        data_record = zlib.compress(data.strip())
-
-        parsed_result = self.parser_helper(data=data_record,
+        parsed_result = self.parser_helper(data=data,
                                            schema=schema,
                                            options=options)
 
@@ -156,11 +154,10 @@ class TestJSONParser(TestParser):
 
         # load fixture file
         with open('test/unit/fixtures/inspec.json', 'r') as fixture_file:
-            data = fixture_file.readline()
+            data = fixture_file.readline().strip()
 
-        data_record = data.strip()
         # setup json parser
-        parsed_result = self.parser_helper(data=data_record,
+        parsed_result = self.parser_helper(data=data,
                                            schema=schema,
                                            options=options)
 
@@ -176,11 +173,10 @@ class TestJSONParser(TestParser):
 
         # load fixture file
         with open('test/unit/fixtures/cloudtrail.json', 'r') as fixture_file:
-            data = fixture_file.readline()
+            data = fixture_file.readline().strip()
 
-        data_record = data.strip()
         # setup json parser
-        parsed_result = self.parser_helper(data=data_record,
+        parsed_result = self.parser_helper(data=data,
                                            schema=schema,
                                            options=options)
 
@@ -257,8 +253,8 @@ class TestJSONParser(TestParser):
 
         # test optional fields
         assert_equal(parsed_result[0]['host-id'], 0)
-        assert_equal(parsed_result[0]['ids'], [])
-        assert_equal(parsed_result[0]['results'], {})
+        assert_is_instance(parsed_result[0]['ids'], list)
+        assert_is_instance(parsed_result[0]['results'], dict)
 
     def test_optional_keys_with_json_path(self):
         """Parse JSON with optional top level keys and json path to records"""

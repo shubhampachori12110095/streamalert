@@ -27,7 +27,7 @@ from stream_alert.rule_processor.config import load_env
 
 from unit.stream_alert_rule_processor.test_helpers import (
     _get_mock_context,
-    _load_payload_by_service,
+    _load_and_classify_payload,
     _make_kinesis_raw_record
 )
 
@@ -75,7 +75,7 @@ class TestStreamRules(object):
         # prepare the payloads
         service, entity = 'kinesis', 'test_kinesis_stream'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = _load_payload_by_service(self.config, service, entity, raw_record)
+        payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
         # process payloads
         alerts = StreamRules.process(payload)
@@ -144,7 +144,7 @@ class TestStreamRules(object):
         # prepare the payloads
         service, entity = 'kinesis', 'test_kinesis_stream'
         raw_record = _make_kinesis_raw_record(entity, json.dumps(kinesis_data))
-        payload = _load_payload_by_service(self.config, service, entity, raw_record)
+        payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
         # process payloads
         alerts = StreamRules.process(payload)
@@ -204,7 +204,7 @@ class TestStreamRules(object):
             # prepare the payloads
             service, entity = 'kinesis', 'test_kinesis_stream'
             raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-            payload = _load_payload_by_service(self.config, service, entity, raw_record)
+            payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
             alerts.extend(StreamRules.process(payload))
 
@@ -233,7 +233,7 @@ class TestStreamRules(object):
         # prepare the payloads
         service, entity = 'kinesis', 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = _load_payload_by_service(self.config, service, entity, raw_record)
+        payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
         # process payloads
         alerts = StreamRules.process(payload)
@@ -261,7 +261,7 @@ class TestStreamRules(object):
         # prepare the payloads
         service, entity = 'kinesis', 'test_kinesis_stream'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = _load_payload_by_service(self.config, service, entity, raw_record)
+        payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
         # process payloads
         alerts = StreamRules.process(payload)
@@ -288,7 +288,7 @@ class TestStreamRules(object):
         # prepare the payloads
         service, entity = 'kinesis', 'test_kinesis_stream'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
-        payload = _load_payload_by_service(self.config, service, entity, raw_record)
+        payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
         # process payloads
         alerts = StreamRules.process(payload)
@@ -331,7 +331,7 @@ class TestStreamRules(object):
         # prepare the payloads
         service, entity = 'kinesis', 'test_kinesis_stream'
         raw_record = _make_kinesis_raw_record(entity, auditd_test_data)
-        payload = _load_payload_by_service(self.config, service, entity, raw_record)
+        payload = _load_and_classify_payload(self.config, service, entity, raw_record)
 
         # process payloads
         alerts = StreamRules.process(payload)

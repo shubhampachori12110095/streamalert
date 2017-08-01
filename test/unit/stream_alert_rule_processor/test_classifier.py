@@ -53,6 +53,16 @@ class TestStreamClassifier(object):
         del self.classifier._entity_log_sources[:]
         sa_classifier.SUPPORT_MULTIPLE_SCHEMA_MATCHING = False
 
+    def _prepare_and_classify_payload(self, service, entity, raw_record):
+        """Helper method to return a preparsed and classified payload"""
+        payload = load_stream_payload(service, entity, raw_record, None)
+
+        payload = payload.pre_parse().next()
+        self.classifier.load_sources(service, entity)
+        self.classifier.classify_record(payload)
+
+        return payload
+
     def test_convert_type_string(self):
         """StreamClassifier - Convert Type, Default String"""
         payload = {'key_01': 10.101}
@@ -196,8 +206,7 @@ class TestStreamClassifier(object):
 
     def test_load_sources_valid(self):
         """StreamClassifier - Load Log Sources for Service and Entity, Valid"""
-        service = 'kinesis'
-        entity = 'unit_test_default_stream'
+        service, entity = 'kinesis', 'unit_test_default_stream'
 
         result = self.classifier.load_sources(service, entity)
 
@@ -220,8 +229,7 @@ class TestStreamClassifier(object):
     @patch('logging.Logger.error')
     def test_load_sources_invalid_ent(self, log_mock):
         """StreamClassifier - Load Log Sources for Service and Entity, Invalid Entity"""
-        service = 'kinesis'
-        entity = 'unit_test_bad_stream'
+        service, entity = 'kinesis', 'unit_test_bad_stream'
 
         result = self.classifier.load_sources(service, entity)
 
@@ -244,8 +252,7 @@ class TestStreamClassifier(object):
     @patch('logging.Logger.error')
     def test_parse_convert_fail(self, log_mock):
         """StreamClassifier - Convert Failed"""
-        service = 'kinesis'
-        entity = 'unit_test_default_stream'
+        service, entity = 'kinesis', 'unit_test_default_stream'
 
         result = self.classifier.load_sources(service, entity)
 
@@ -281,8 +288,7 @@ class TestStreamClassifier(object):
         # Make sure support for multiple schema matching is ON
         sa_classifier.SUPPORT_MULTIPLE_SCHEMA_MATCHING = True
 
-        service = 'kinesis'
-        entity = 'test_stream_2'
+        service, entity = 'kinesis', 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
         payload = load_stream_payload(service, entity, raw_record, None)
 
@@ -311,8 +317,7 @@ class TestStreamClassifier(object):
         })
         sa_classifier.SUPPORT_MULTIPLE_SCHEMA_MATCHING = True
 
-        service = 'kinesis'
-        entity = 'test_stream_2'
+        service, entity = 'kinesis', 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
         payload = load_stream_payload(service, entity, raw_record, None)
 
@@ -341,8 +346,7 @@ class TestStreamClassifier(object):
         })
         sa_classifier.SUPPORT_MULTIPLE_SCHEMA_MATCHING = True
 
-        service = 'kinesis'
-        entity = 'test_stream_2'
+        service, entity = 'kinesis', 'test_stream_2'
         raw_record = _make_kinesis_raw_record(entity, kinesis_data)
         payload = load_stream_payload(service, entity, raw_record, None)
 
@@ -360,3 +364,240 @@ class TestStreamClassifier(object):
                  call('Proceeding with schema for: %s', 'test_multiple_schemas:01')]
 
         log_mock.assert_has_calls(calls)
+
+    def test_classify_json_optional(self):
+        """StreamClassifier - Classify JSON with optional fields"""
+        kinesis_data = json.dumps({
+            'key1': [
+                {
+                    'test': 1,
+                    'test2': 2
+                },
+                {
+                    'test3': 3,
+                    'test4': 4
+                }
+            ],
+            'key2': 'more sample data',
+            'key3': '1',
+            'key10': {
+                'test-field': 1,
+                'test-field2': 2
+            }
+        })
+
+        service, entity = 'kinesis', 'test_kinesis_stream'
+        raw_record = _make_kinesis_raw_record(entity, kinesis_data)
+        payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+        # valid record test
+        assert_equal(payload.valid, True)
+        assert_is_instance(payload.records[0], dict)
+
+        # log type test
+        assert_equal(payload.log_source, 'test_log_type_json')
+
+        # payload type test
+        assert_equal(payload.type, 'json')
+
+        # record value tests
+        assert_equal(len(payload.records[0]['key1']), 2)
+        assert_equal(payload.records[0]['key3'], 1)
+        assert_equal(payload.records[0]['key1'][1]['test4'], 4)
+
+        # optional field tests
+        assert_equal(payload.records[0]['key11'], 0.0)
+        assert_equal(payload.records[0]['key9'], False)
+        assert_equal(len(payload.records[0]['key10']), 2)
+
+        # record type tests
+        assert_is_instance(payload.records[0]['key1'], list)
+        assert_is_instance(payload.records[0]['key2'], str)
+        assert_is_instance(payload.records[0]['key3'], int)
+
+    def test_json_type_casting(self):
+        """StreamClassifier - JSON with various types (boolean, float, integer)"""
+        kinesis_data = json.dumps({
+            'key4': 'true',
+            'key5': '10.001',
+            'key6': '10',
+            'key7': False
+        })
+
+        service, entity = 'kinesis', 'test_kinesis_stream'
+        raw_record = _make_kinesis_raw_record(entity, kinesis_data)
+        payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+        # valid record test
+        assert_equal(payload.valid, True)
+        assert_is_instance(payload.records[0], dict)
+
+        # log type test
+        assert_equal(payload.log_source, 'test_log_type_json_2')
+
+        # payload type test
+        assert_equal(payload.type, 'json')
+
+        # Check the types
+        assert_is_instance(payload.records[0]['key4'], bool)
+        assert_is_instance(payload.records[0]['key5'], float)
+        assert_is_instance(payload.records[0]['key6'], int)
+        assert_is_instance(payload.records[0]['key7'], bool)
+
+    def test_classify_nested_json(self):
+        """StreamClassifier - Classify Nested JSON"""
+        kinesis_data = json.dumps({
+            'date': 'Jan 01 2017',
+            'unixtime': '1485556524',
+            'host': 'my-host-name',
+            'data': {
+                'key1': 'test',
+                'key2': 'one'
+            }
+        })
+
+        service, entity = 'kinesis', 'test_kinesis_stream'
+        raw_record = _make_kinesis_raw_record(entity, kinesis_data)
+        payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+        # valid record test
+        assert_equal(payload.valid, True)
+        assert_is_instance(payload.records[0], dict)
+
+        # log type test
+        assert_equal(payload.log_source, 'test_log_type_json_nested')
+
+        # payload type test
+        assert_equal(payload.type, 'json')
+
+        # record type test
+        assert_is_instance(payload.records[0]['date'], str)
+        assert_is_instance(payload.records[0]['unixtime'], int)
+        assert_is_instance(payload.records[0]['data'], dict)
+
+        # record value test
+        assert_equal(payload.records[0]['date'], 'Jan 01 2017')
+        assert_equal(payload.records[0]['data']['key1'], 'test')
+
+    def test_csv(self):
+        """StreamClassifier - Classify CSV"""
+        csv_data = 'jan102017,0100,host1,thisis some data with keyword1 in it'
+
+        service, entity = 'kinesis', 'test_kinesis_stream'
+        raw_record = _make_kinesis_raw_record(entity, csv_data)
+        payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+        # valid record test
+        assert_equal(payload.valid, True)
+        assert_is_instance(payload.records[0], dict)
+
+        # record value tests
+        assert_equal(payload.records[0]['message'],
+                     'thisis some data with keyword1 in it')
+        assert_equal(payload.records[0]['host'], 'host1')
+
+        # type test
+        assert_equal(payload.type, 'csv')
+
+        # log source test
+        assert_equal(payload.log_source, 'test_log_type_csv')
+
+    def test_csv_nested(self):
+        """StreamClassifier - Classify Nested CSV"""
+        csv_nested_data = (
+            '"Jan 10 2017","1485635414","host1.prod.test","Corp",'
+            '"chef,web-server,1,10,success"'
+        )
+
+        service, entity = 'kinesis', 'test_kinesis_stream'
+        raw_record = _make_kinesis_raw_record(entity, csv_nested_data)
+        payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+        # valid record test
+        assert_equal(payload.valid, True)
+        assert_is_instance(payload.records[0], dict)
+
+        # record value tests
+        assert_equal(payload.records[0]['date'], 'Jan 10 2017')
+        assert_equal(payload.records[0]['host'], 'host1.prod.test')
+        assert_equal(payload.records[0]['time'], 1485635414)
+        assert_equal(payload.records[0]['message']['role'], 'web-server')
+        assert_equal(payload.records[0]['message']['cluster_size'], 10)
+
+        # type test
+        assert_equal(payload.type, 'csv')
+
+        # log source test
+        assert_equal(payload.log_source, 'test_log_type_csv_nested')
+
+    def test_classify_kv(self):
+        """StreamClassifier - Classify Key/Value"""
+        auditd_test_data = (
+            'type=SYSCALL msg=audit(1364481363.243:24287): '
+            'arch=c000003e syscall=2 success=no exit=-13 a0=7fffd19c5592 a1=0 '
+            'a2=7fffd19c4b50 a3=a items=1 ppid=2686 pid=3538 auid=500 uid=500 '
+            'gid=500 euid=500 suid=500 fsuid=500 egid=500 sgid=500 fsgid=500 tty=pts0 '
+            'ses=1 comm="cat" exe="/bin/cat" '
+            'subj=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 '
+            'key="sshd_config" type=CWD msg=audit(1364481363.243:24287):  '
+            'cwd="/home/shadowman" type=PATH '
+            'msg=audit(1364481363.243:24287): item=0 name="/etc/ssh/sshd_config" '
+            'inode=409248 dev=fd:00 mode=0100600 ouid=0 ogid=0 '
+            'rdev=00:00 obj=system_u:object_r:etc_t:s0'
+        )
+
+        service, entity = 'kinesis', 'test_kinesis_stream'
+        raw_record = _make_kinesis_raw_record(entity, auditd_test_data)
+        payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+        # valid record test
+        assert_equal(payload.valid, True)
+        assert_is_instance(payload.records[0], dict)
+
+        # record value tests
+        assert_equal(payload.records[0]['type'], 'SYSCALL')
+        assert_equal(payload.records[0]['suid'], 500)
+        assert_equal(payload.records[0]['pid'], 3538)
+        assert_equal(payload.records[0]['type_3'], 'PATH')
+
+        # type test
+        assert_equal(payload.type, 'kv')
+
+    def test_classify_syslog(self):
+        """StreamClassifier - Classify syslog"""
+        test_data_1 = (
+            'Jan 26 19:35:33 vagrant-ubuntu-trusty-64 '
+            'sudo: pam_unix(sudo:session): '
+            'session opened for user root by (uid=0)'
+        )
+        test_data_2 = (
+            "Jan 26 12:28:06 macbook004154test authd[122]: "
+            "Succeeded authorizing right 'com.apple.trust-settings.admin' "
+            "by client '/usr/sbin/ocspd' [11835] for authorization created by"
+            " '/usr/bin/security' [21322] (3,0)"
+        )
+
+        fixtures = {'test_1': test_data_1, 'test_2': test_data_2}
+        for name, syslog_message in fixtures.iteritems():
+
+            service, entity = 'kinesis', 'test_stream_2'
+            raw_record = _make_kinesis_raw_record(entity, syslog_message)
+            payload = self._prepare_and_classify_payload(service, entity, raw_record)
+
+            # valid record test
+            assert_equal(payload.valid, True)
+            assert_is_instance(payload.records[0], dict)
+
+            # type test
+            assert_equal(payload.type, 'syslog')
+
+            # record value tests
+            if name == 'test_1':
+                assert_equal(payload.records[0]['host'], 'vagrant-ubuntu-trusty-64')
+                assert_equal(payload.records[0]['application'], 'sudo')
+                assert_equal(payload.records[0]['message'], 'pam_unix(sudo:session):'
+                                                            ' session opened for user'
+                                                            ' root by (uid=0)')
+            elif name == 'test_2':
+                assert_equal(payload.records[0]['host'], 'macbook004154test')
+                assert_equal(payload.records[0]['application'], 'authd')

@@ -29,7 +29,7 @@ from stream_alert.rule_processor.sink import StreamSink
 class StreamAlert(object):
     """Wrapper class for handling all StreamAlert classificaiton and processing"""
 
-    def __init__(self, context, send_alerts=True):
+    def __init__(self, context, enable_alert_processor=True):
         """
         Args:
             context: An AWS context object which provides metadata on the currently
@@ -57,8 +57,8 @@ class StreamAlert(object):
         self.classifier = StreamClassifier(config=config)
 
         self.metrics = Metrics(self.env['lambda_region'])
-        self.send_alerts = send_alerts
-        self._failed_log_count = 0
+        self.enable_alert_processor = enable_alert_processor
+        self._failed_record_count = 0
         self._alerts = []
 
     def run(self, event):
@@ -113,11 +113,11 @@ class StreamAlert(object):
 
             self._process_alerts(payload)
 
-        LOGGER.debug('Invalid log failure count: %d', self._failed_log_count)
+        LOGGER.debug('Invalid record count: %d', self._failed_record_count)
 
         self.metrics.put_metric_data(
             Metrics.Name.FAILED_PARSES,
-            self._failed_log_count,
+            self._failed_record_count,
             Metrics.Unit.COUNT)
 
         LOGGER.debug('%s alerts triggered', len(self._alerts))
@@ -129,7 +129,7 @@ class StreamAlert(object):
         if self._alerts and LOGGER.isEnabledFor(log_level_debug):
             LOGGER.debug('Alerts:\n%s', json.dumps(self._alerts, indent=2))
 
-        return self._failed_log_count == 0
+        return self._failed_record_count == 0
 
     def get_alerts(self):
         """Public method to return alerts from class. Useful for testing.
@@ -149,27 +149,26 @@ class StreamAlert(object):
         for record in payload.pre_parse():
             self.classifier.classify_record(record)
             if not record.valid:
-                # Log a message about this failure if this is not a development env
                 if self.env['lambda_alias'] != 'development':
-                    LOGGER.error('Log failed to match any defined schemas: %s\n%s',
+                    LOGGER.error('Record does not match any defined schemas: %s\n%s',
                                  record, record.pre_parsed_record)
 
-                self._failed_log_count += 1
+                self._failed_record_count += 1
                 continue
 
             LOGGER.debug('Payload: %s', record)
 
             record_alerts = StreamRules.process(record)
+
+            LOGGER.debug('Processed %d valid record(s) that resulted in %d alert(s).',
+                         len(payload.records),
+                         len(record_alerts))
+
             if not record_alerts:
-                pluralize = 's' if len(record.records) > 1 else ''
-                LOGGER.debug('Processed %d valid record%s that resulted in no alerts.',
-                             len(payload.records),
-                             pluralize)
                 continue
 
-            # Extend the list of alerts with any new alerts
+            # Extend the list of alerts with any new ones so they can be returned
             self._alerts.extend(record_alerts)
 
-            # If sending is enabled, send alerts to the alert processor
-            if self.send_alerts:
+            if self.enable_alert_processor:
                 self.sinker.sink(record_alerts)

@@ -66,10 +66,8 @@ def _validate_config(config):
     # check sources attributes
     if not set(config['sources']).issubset({'kinesis', 's3', 'sns'}):
         missing = {'kinesis', 's3', 'sns'} - set(config['sources'])
-        pluralize = 's' if len(missing) > 1 else ''
         raise ConfigError(
-            'Sources contains invalid key%s: %s',
-            pluralize,
+            'Sources contains invalid key(s): %s',
             ', '.join('\'{}\''.format(key) for key in missing))
 
     # check sources attributes

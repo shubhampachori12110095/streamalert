@@ -46,7 +46,7 @@ class TestStreamAlert(object):
            lambda: load_config('test/unit/conf/'))
     def setup_class(cls):
         """Setup the class before any methods"""
-        cls.__sa_handler = StreamAlert(_get_mock_context())
+        cls.__sa_handler = StreamAlert(_get_mock_context(), False)
 
     @classmethod
     def teardown_class(cls):
@@ -56,9 +56,9 @@ class TestStreamAlert(object):
     def teardown(self):
         """Teardown the class after each methods"""
         del self.__sa_handler._alerts[:]
-        self.__sa_handler._failed_log_count = 0
+        self.__sa_handler._failed_record_count = 0
         self.__sa_handler.env['lambda_alias'] = 'development'
-        self.__sa_handler.send_alerts = False
+        self.__sa_handler.enable_alert_processor = False
 
     def test_run_no_records(self):
         """StreamAlert Class - Run, No Records"""
@@ -153,8 +153,8 @@ class TestStreamAlert(object):
         extract_mock.return_value = ('kinesis', 'unit_test_default_stream')
         self.__sa_handler.run(_get_valid_event())
 
-        calls = [call('Processed %d valid record%s that resulted in no alerts.', 1, ''),
-                 call('Invalid log failure count: %d', 0),
+        calls = [call('Processed %d valid record(s) that resulted in %d alert(s).', 1, 0),
+                 call('Invalid record count: %d', 0),
                  call('%s alerts triggered', 0)]
 
         log_mock.assert_has_calls(calls)
@@ -173,7 +173,7 @@ class TestStreamAlert(object):
         self.__sa_handler.env['lambda_alias'] = 'production'
         self.__sa_handler.run(event)
 
-        assert_equal(log_mock.call_args[0][0], 'Log failed to match any defined schemas: %s\n%s')
+        assert_equal(log_mock.call_args[0][0], 'Record does not match any defined schemas: %s\n%s')
         assert_equal(log_mock.call_args[0][2], '{"bad": "data"}')
 
     @patch('stream_alert.rule_processor.sink.StreamSink.sink')
@@ -185,7 +185,7 @@ class TestStreamAlert(object):
         rules_mock.return_value = ['success!!']
 
         # Set send_alerts to true so the sink happens
-        self.__sa_handler.send_alerts = True
+        self.__sa_handler.enable_alert_processor = True
 
         # Swap out the alias so the logging occurs
         self.__sa_handler.env['lambda_alias'] = 'production'

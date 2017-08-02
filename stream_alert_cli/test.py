@@ -126,12 +126,12 @@ class RuleProcessorTester(object):
                 self.apply_helpers(test_record)
 
                 # Run tests on the formatted record
-                alerts, expected_alerts = self.test_rule(
+                alerts, expected_alerts, all_valid_logs = self.test_rule(
                     rule_name,
                     test_record,
                     helpers.format_lambda_test_record(test_record))
 
-                current_test_passed = len(alerts) == expected_alerts
+                current_test_passed = (len(alerts) == expected_alerts) and all_valid_logs
 
                 # Print rule name for section header, but only if we get
                 # to a point where there is a record to actually be tested.
@@ -294,10 +294,10 @@ class RuleProcessorTester(object):
 
         # Run the rule processor. Passing mocked context object with fake
         # values and False for suppressing sending of alerts
-        processor = StreamAlert(self.context)
-        success = processor.run(event)
+        processor = StreamAlert(self.context, False)
+        all_valid_logs = processor.run(event)
 
-        if not success:
+        if not all_valid_logs:
             logs = processor.classifier.get_log_info_for_source()
             self.analyze_log_delta(logs, rule_name, test_record)
 
@@ -307,7 +307,7 @@ class RuleProcessorTester(object):
         alerts = [alert for alert in alerts
                   if alert['rule_name'] == rule_name]
 
-        return alerts, expected_alert_count
+        return alerts, expected_alert_count, all_valid_logs
 
     def analyze_log_delta(self, logs, rule_name, test_record):
         """Provide some additional context on why this test failed

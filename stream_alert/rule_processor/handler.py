@@ -29,13 +29,15 @@ from stream_alert.rule_processor.sink import StreamSink
 class StreamAlert(object):
     """Wrapper class for handling all StreamAlert classificaiton and processing"""
 
-    def __init__(self, context):
+    def __init__(self, context, send_alerts=True):
         """
         Args:
             context: An AWS context object which provides metadata on the currently
                 executing lambda function. The environment is setup from the arn
-                within the context object. For testing, the lambda alias on the arn
-                will be 'development' - this dictates what to do with alerts.
+                within the context object.
+            send_alerts: If the user wants to send the alerts using their own
+                methods instead of the StreamAlert alert processor, send_alerts
+                can be set to True to suppress sending.
         """
         # Try to load the config - validation occurs during load
         try:
@@ -55,6 +57,7 @@ class StreamAlert(object):
         self.classifier = StreamClassifier(config=config)
 
         self.metrics = Metrics(self.env['lambda_region'])
+        self.send_alerts = send_alerts
         self._failed_log_count = 0
         self._alerts = []
 
@@ -71,7 +74,7 @@ class StreamAlert(object):
                 an s3 bucket event) containing data emitted to the stream.
 
         Returns:
-            [integer] exit status code. 0 on success, non-zero on error
+            [boolean] True if all logs being parsed match a schema
         """
         records = event.get('Records', [])
         LOGGER.debug('Number of Records: %d', len(records))
@@ -132,7 +135,7 @@ class StreamAlert(object):
         """Public method to return alerts from class. Useful for testing.
 
         Returns:
-            [list] list of alerts in json format
+            [list] list of alerts as dictionaries
         """
         return self._alerts
 
@@ -143,11 +146,11 @@ class StreamAlert(object):
             payload [StreamPayload]: StreamAlert payload object being processed
             data [string]: Pre parsed data string from a raw_event to be parsed
         """
-        is_production = self.env['lambda_alias'] != 'development'
         for record in payload.pre_parse():
             self.classifier.classify_record(record)
             if not record.valid:
-                if is_production:
+                # Log a message about this failure if this is not a development env
+                if self.env['lambda_alias'] != 'development':
                     LOGGER.error('Log failed to match any defined schemas: %s\n%s',
                                  record, record.pre_parsed_record)
 
@@ -158,12 +161,15 @@ class StreamAlert(object):
 
             record_alerts = StreamRules.process(record)
             if not record_alerts:
-                LOGGER.debug('Valid data, no alerts')
+                pluralize = 's' if len(record.records) > 1 else ''
+                LOGGER.debug('Processed %d valid record%s that resulted in no alerts.',
+                             len(payload.records),
+                             pluralize)
                 continue
 
             # Extend the list of alerts with any new alerts
             self._alerts.extend(record_alerts)
 
-            # Attempt to send them to the alert processor
-            if is_production:
+            # If sending is enabled, send alerts to the alert processor
+            if self.send_alerts:
                 self.sinker.sink(record_alerts)

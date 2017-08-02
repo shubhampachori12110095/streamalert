@@ -153,7 +153,7 @@ class TestStreamAlert(object):
         extract_mock.return_value = ('kinesis', 'unit_test_default_stream')
         self.__sa_handler.run(_get_valid_event())
 
-        calls = [call('Valid data, no alerts'),
+        calls = [call('Processed %d valid record%s that resulted in no alerts.', 1, ''),
                  call('Invalid log failure count: %d', 0),
                  call('%s alerts triggered', 0)]
 

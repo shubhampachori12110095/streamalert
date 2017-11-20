@@ -123,27 +123,10 @@ class StreamAlert(object):
                                                 region_name=self.env['lambda_region'])
 
         for raw_record in records:
-            # Get the service and entity from the payload. If the service/entity
-            # is not in our config, log and error and go onto the next record
-            service, entity = self.classifier.extract_service_and_entity(raw_record)
-            if not service:
-                LOGGER.error('No valid service found in payload\'s raw record. Skipping '
-                             'record: %s', raw_record)
-                continue
-
-            if not entity:
-                LOGGER.error(
-                    'Unable to extract entity from payload\'s raw record for service %s. '
-                    'Skipping record: %s', service, raw_record)
-                continue
-
-            # Cache the log sources for this service and entity on the classifier
-            if not self.classifier.load_sources(service, entity):
-                continue
-
-            # Create the StreamPayload to use for encapsulating parsed info
-            payload = load_stream_payload(service, entity, raw_record)
-            if not payload:
+            # Create the StreamPayload to use for encapsulating parsed info.
+            # Also checks for valid service/entities from a raw record
+            payload = load_stream_payload(raw_record)
+            if not (payload and payload.load_logs_for_source(self.config)):
                 continue
 
             self._process_alerts(payload)
@@ -152,13 +135,9 @@ class StreamAlert(object):
                                 MetricLogger.TOTAL_PROCESSED_SIZE,
                                 self._processed_size)
 
-        LOGGER.debug('Invalid record count: %d', self._failed_record_count)
-
         MetricLogger.log_metric(FUNCTION_NAME,
                                 MetricLogger.FAILED_PARSES,
                                 self._failed_record_count)
-
-        LOGGER.debug('%s alerts triggered', len(self._alerts))
 
         MetricLogger.log_metric(
             FUNCTION_NAME, MetricLogger.TRIGGERED_ALERTS, len(
@@ -169,6 +148,7 @@ class StreamAlert(object):
         if self._alerts and LOGGER.isEnabledFor(LOG_LEVEL_DEBUG):
             LOGGER.debug('Alerts:\n%s', json.dumps(self._alerts, indent=2))
 
+        # Send alerts to Firehose if enabled
         if self.firehose_client:
             self._send_to_firehose()
 
@@ -356,8 +336,8 @@ class StreamAlert(object):
             payload (StreamPayload): StreamAlert payload object being processed
         """
         for record in payload.pre_parse():
-            # Increment the processed size using the length of this record
             self._processed_size += len(record.pre_parsed_record)
+
             self.classifier.classify_record(record)
             if not record.valid:
                 if self.env['lambda_alias'] != 'development':
@@ -373,11 +353,11 @@ class StreamAlert(object):
                 record.log_source,
                 record.entity)
 
-            record_alerts = StreamRules.process(record)
+            generated_alerts = StreamRules.process(record)
 
             LOGGER.debug('Processed %d valid record(s) that resulted in %d alert(s).',
                          len(payload.records),
-                         len(record_alerts))
+                         len(generated_alerts))
 
             # Add all parsed records to the categorized payload dict
             # only if Firehose is enabled
@@ -387,11 +367,11 @@ class StreamAlert(object):
                     ['infrastructure'].get('firehose', {}).get('disabled_logs', []):
                     self.categorized_payloads[payload.log_source].extend(payload.records)
 
-            if not record_alerts:
+            if not generated_alerts:
                 continue
 
             # Extend the list of alerts with any new ones so they can be returned
-            self._alerts.extend(record_alerts)
+            self._alerts.extend(generated_alerts)
 
             if self.enable_alert_processor:
-                self.sinker.sink(record_alerts)
+                self.sinker.sink(generated_alerts)

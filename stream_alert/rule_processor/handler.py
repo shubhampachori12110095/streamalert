@@ -103,8 +103,7 @@ class StreamAlert(object):
         Matches records against rules.
 
         Args:
-            event (dict): An AWS event mapped to a specific source/entity
-                containing data read by Lambda.
+            event (dict): An AWS event from a specific service/resource
 
         Returns:
             bool: True if all logs being parsed match a schema
@@ -348,10 +347,10 @@ class StreamAlert(object):
                 continue
 
             LOGGER.debug(
-                'Classified and Parsed Payload: <Valid: %s, Log Source: %s, Entity: %s>',
+                'Classified and Parsed Payload: <Valid: %s, Log Source: %s, Resource: %s>',
                 record.valid,
                 record.log_source,
-                record.entity)
+                record.resource)
 
             generated_alerts = StreamRules.process(record)
 

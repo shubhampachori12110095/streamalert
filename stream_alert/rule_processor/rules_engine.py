@@ -379,9 +379,9 @@ class StreamRules(object):
                 # rule analysis
                 rule_result = cls.process_rule(record_copy, rule)
                 if rule_result:
-                    LOGGER.info('Rule [%s] triggered an alert on log type [%s] from entity \'%s\' '
-                                'in service \'%s\'', rule.rule_name, payload.log_source,
-                                payload.entity, payload.service())
+                    LOGGER.info('Rule [%s] triggered an alert on log type [%s] from [%s:%s]',           
+                                rule.rule_name, payload.log_source,
+                                payload.service(), payload.resource)
                     alert = {
                         'record': record_copy,
                         'rule_name': rule.rule_name,
@@ -390,7 +390,7 @@ class StreamRules(object):
                         'log_type': payload.type,
                         'outputs': rule.outputs,
                         'source_service': payload.service(),
-                        'source_entity': payload.entity,
+                        'source_resource': payload.resource,
                         'context': rule.context}
                     alerts.append(alert)
 

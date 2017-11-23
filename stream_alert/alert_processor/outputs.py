@@ -930,7 +930,7 @@ class S3Output(AWSOutput):
         """Send alert to an S3 bucket
 
         Organizes alert into the following folder structure:
-            service/entity/rule_name/datetime.json
+            service/resource/rule_name/datetime.json
         The alert gets dumped to a JSON string
 
         Args:
@@ -941,7 +941,7 @@ class S3Output(AWSOutput):
         """
         alert = kwargs['alert']
         service = alert['source_service']
-        entity = alert['source_entity']
+        resource = alert['source_resource']
 
         current_date = datetime.now()
 
@@ -961,7 +961,7 @@ class S3Output(AWSOutput):
         key = 'alerts/dt={}/{}_{}_{}_{}.json'.format(
             current_date.strftime('%Y-%m-%d-%H'),
             service,
-            entity,
+            resource,
             alert['rule_name'],
             uuid.uuid4()
         )

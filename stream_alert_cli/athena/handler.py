@@ -15,7 +15,7 @@ limitations under the License.
 """
 from stream_alert.athena_partition_refresh.main import StreamAlertAthenaClient
 from stream_alert.athena_partition_refresh import helpers as athena_helpers
-from stream_alert.rule_processor.handler import StreamAlert
+from stream_alert.rule_processor.firehose import StreamAlertFirehose
 from stream_alert_cli.logger import LOGGER_CLI
 from stream_alert_cli.helpers import continue_prompt
 from stream_alert_cli.terraform import _common as terraform_cli_helpers
@@ -222,7 +222,7 @@ def create_table(athena_client, options, config):
         schema = dict(log_info['schema'])
         schema_statement = ''
 
-        sanitized_schema = StreamAlert.sanitize_keys(schema)
+        sanitized_schema = StreamAlertFirehose.sanitize_keys(schema)
         athena_schema = {}
 
         _add_to_athena_schema(sanitized_schema, athena_schema)
@@ -232,7 +232,7 @@ def create_table(athena_client, options, config):
         if configuration_options:
             envelope_keys = configuration_options.get('envelope_keys')
             if envelope_keys:
-                sanitized_envelope_key_schema = StreamAlert.sanitize_keys(envelope_keys)
+                sanitized_envelope_key_schema = StreamAlertFirehose.sanitize_keys(envelope_keys)
                 # Note: this key is wrapped in backticks to be Hive compliant
                 _add_to_athena_schema(sanitized_envelope_key_schema, athena_schema,
                                       '`streamalert:envelope_keys`')
